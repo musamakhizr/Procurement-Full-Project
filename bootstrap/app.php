@@ -18,6 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
         ]);
+
+        // For API requests, never try to redirect to a 'login' route — return JSON 401 instead.
+        $middleware->redirectGuestsTo(function (Request $request) {
+            return $request->is('api/*') ? null : '/sign-in';
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {
