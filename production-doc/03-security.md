@@ -26,13 +26,17 @@
 | Setting | Value | File |
 |---|---|---|
 | Listening ports | `22` and `2222` | `/etc/ssh/sshd_config.d/99-hexugo-hardening.conf` |
-| Root login | `prohibit-password` (key only) | same |
-| Password auth | `no` | same |
+| Root login | `yes` (password OR key) | same |
+| Password auth | `yes` ⚠️ (legacy compatibility for existing users) | same |
+| Pubkey auth | `yes` | same |
 | KbdInteractive | `no` | same |
 | AllowUsers | `root deploy` | same |
 | MaxAuthTries | `3` | same |
 | ClientAliveInterval | `300` | same |
 | Service mode | `ssh.service` (NOT socket-activated) | systemd |
+| fail2ban sshd | ban 24h after 3 failures in 10m | `/etc/fail2ban/jail.local` |
+
+> ⚠️ **Note on password auth**: re-enabled at user request to preserve access for existing users with only the root password. Compensated with stricter fail2ban (3 failures = 24h ban). To return to key-only later: change `PasswordAuthentication yes` → `no` in the override file and reload sshd.
 
 To **add a new SSH user**:
 
