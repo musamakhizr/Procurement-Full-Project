@@ -1,0 +1,30 @@
+# /etc/logrotate.d/hexugo
+/var/www/hexugo/shared/storage/logs/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0664 deploy www-data
+    sharedscripts
+    postrotate
+        [ -f /var/run/supervisor.sock ] && supervisorctl signal HUP all >/dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/php8.3-fpm-hexugo.*.log {
+    weekly
+    missingok
+    rotate 8
+    compress
+    delaycompress
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        if [ -x /usr/lib/php/php8.3-fpm-reopenlogs ]; then
+            /usr/lib/php/php8.3-fpm-reopenlogs
+        fi
+    endscript
+}

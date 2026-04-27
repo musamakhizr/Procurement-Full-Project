@@ -1,0 +1,31 @@
+# /etc/fail2ban/jail.local
+# Fail2ban hexugo configuration
+
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled  = true
+port     = 2222
+filter   = sshd
+maxretry = 3
+bantime  = 24h
+
+[nginx-http-auth]
+enabled  = true
+port     = http,https
+filter   = nginx-http-auth
+logpath  = /var/log/nginx/error.log
+
+[nginx-limit-req]
+enabled  = true
+port     = http,https
+filter   = nginx-limit-req
+logpath  = /var/log/nginx/hexugo.error.log
+maxretry = 10
+findtime = 10m
+bantime  = 1h

@@ -19,6 +19,12 @@
 /storage/*.key
 /storage/pail
 /vendor
+
+# Deployment local files (secrets)
+deploy/CREDENTIALS.local
+deploy/.env.local
+public/frontend/node_modules
+public/frontend/dist
 Homestead.json
 Homestead.yaml
 Thumbs.db

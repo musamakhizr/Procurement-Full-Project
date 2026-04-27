@@ -1,0 +1,52 @@
+# /etc/mysql/mariadb.conf.d/99-hexugo-tuning.cnf
+# Production tuning for ~14GB RAM box
+
+[mysqld]
+# --- bind only to localhost ---
+bind-address = 127.0.0.1
+
+# --- charset ---
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+init_connect = 'SET NAMES utf8mb4'
+
+# --- connections ---
+max_connections = 200
+max_allowed_packet = 64M
+wait_timeout = 600
+interactive_timeout = 600
+
+# --- InnoDB ---
+innodb_buffer_pool_size = 4G
+innodb_buffer_pool_instances = 4
+innodb_log_file_size = 512M
+innodb_log_buffer_size = 32M
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+innodb_io_capacity = 2000
+innodb_io_capacity_max = 4000
+innodb_read_io_threads = 4
+innodb_write_io_threads = 4
+innodb_file_per_table = 1
+
+# --- temp / sort ---
+tmp_table_size = 64M
+max_heap_table_size = 64M
+sort_buffer_size = 4M
+join_buffer_size = 4M
+read_buffer_size = 2M
+read_rnd_buffer_size = 4M
+
+# --- slow query log ---
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+log_queries_not_using_indexes = 0
+
+# --- general ---
+skip-name-resolve = 1
+default_storage_engine = InnoDB
+
+# --- query cache (deprecated in newer; off) ---
+query_cache_type = 0
+query_cache_size = 0
