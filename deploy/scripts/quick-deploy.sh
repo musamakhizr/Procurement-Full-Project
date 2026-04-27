@@ -31,10 +31,13 @@ trap 'die "Quick-deploy FAILED at line $LINENO."' ERR
 cd "$APP" || die "App dir $APP not found"
 
 # Keep /opt/hexugo-deploy in sync too (where deploy scripts/templates live)
+# Non-fatal if it fails (e.g. permissions) — the running script copy is enough.
 if [ -d /opt/hexugo-deploy/.git ]; then
     log "Updating deploy scripts in /opt/hexugo-deploy…"
-    git -C /opt/hexugo-deploy fetch --quiet --all
-    git -C /opt/hexugo-deploy reset --quiet --hard "origin/$BRANCH" || warn "couldn't update /opt/hexugo-deploy"
+    if ! git -C /opt/hexugo-deploy fetch --quiet --all 2>/dev/null \
+       || ! git -C /opt/hexugo-deploy reset --quiet --hard "origin/$BRANCH" 2>/dev/null; then
+        warn "couldn't update /opt/hexugo-deploy — continuing"
+    fi
 fi
 
 # ───────────────────────────── 1. Pull ─────────────────────────────
