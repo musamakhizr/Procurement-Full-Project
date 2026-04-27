@@ -31,3 +31,5 @@ public/frontend/dist
 Homestead.json
 Homestead.yaml
 Thumbs.db
+/production-doc
+.claude/
