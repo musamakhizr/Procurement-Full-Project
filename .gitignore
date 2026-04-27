@@ -25,6 +25,9 @@ deploy/CREDENTIALS.local
 deploy/.env.local
 public/frontend/node_modules
 public/frontend/dist
+
+# Frontend env files: ignore local .env, but track .env.production (no secrets, just public URL)
+!public/frontend/.env.production
 Homestead.json
 Homestead.yaml
 Thumbs.db
