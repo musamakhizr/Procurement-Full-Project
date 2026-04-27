@@ -15,12 +15,12 @@ systemctl restart php8.3-fpm
 echo ">> Preparing ACME webroot…"
 install -d -o www-data -g www-data /var/www/letsencrypt
 
-echo ">> Installing nginx server block…"
+echo ">> Installing nginx server block (final config goes to sites-available, enabled later)…"
 install -m 644 /opt/hexugo-deploy/templates/nginx-hexugo.conf /etc/nginx/sites-available/hexugo.conf
-ln -snf /etc/nginx/sites-available/hexugo.conf /etc/nginx/sites-enabled/hexugo.conf
 rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-enabled/hexugo.conf /etc/nginx/sites-enabled/00-bootstrap.conf
 
-# --- bootstrap stage: serve plain HTTP only (no SSL yet) ---
+# --- bootstrap stage: serve plain HTTP only (no SSL yet) for ACME challenge ---
 TMP_HTTP="/etc/nginx/sites-available/hexugo-http-bootstrap.conf"
 cat > "${TMP_HTTP}" <<'EOF'
 server {
@@ -34,7 +34,6 @@ server {
 }
 EOF
 ln -snf "${TMP_HTTP}" /etc/nginx/sites-enabled/00-bootstrap.conf
-mv /etc/nginx/sites-enabled/hexugo.conf /etc/nginx/sites-enabled/hexugo.conf.disabled
 
 nginx -t
 systemctl reload nginx
@@ -47,7 +46,7 @@ certbot certonly --webroot -w /var/www/letsencrypt \
 
 echo ">> Switching to full HTTPS server block…"
 rm -f /etc/nginx/sites-enabled/00-bootstrap.conf
-mv /etc/nginx/sites-enabled/hexugo.conf.disabled /etc/nginx/sites-enabled/hexugo.conf
+ln -snf /etc/nginx/sites-available/hexugo.conf /etc/nginx/sites-enabled/hexugo.conf
 
 nginx -t
 systemctl reload nginx
