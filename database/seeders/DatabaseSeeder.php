@@ -36,7 +36,7 @@ class DatabaseSeeder extends Seeder
 
         $catalog = [
             [
-                'name' => 'Office Supplies',
+                'name' => 'Office & School Admin',
                 'slug' => 'office',
                 'children' => [
                     ['name' => 'Writing', 'slug' => 'writing'],
@@ -45,7 +45,7 @@ class DatabaseSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Classroom Materials',
+                'name' => 'Classroom Supplies',
                 'slug' => 'classroom',
                 'children' => [
                     ['name' => 'Teaching Aids', 'slug' => 'teaching-aids'],
@@ -53,7 +53,7 @@ class DatabaseSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Art & Crafts',
+                'name' => 'Art & Craft',
                 'slug' => 'art',
                 'children' => [
                     ['name' => 'Paints', 'slug' => 'paints'],
@@ -61,7 +61,7 @@ class DatabaseSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Sports Equipment',
+                'name' => 'Sports & Outdoor',
                 'slug' => 'sports',
                 'children' => [
                     ['name' => 'Balls', 'slug' => 'balls'],
@@ -69,7 +69,7 @@ class DatabaseSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Event Supplies',
+                'name' => 'School Events & Custom Products',
                 'slug' => 'events',
                 'children' => [
                     ['name' => 'Decorations', 'slug' => 'decorations'],
@@ -77,16 +77,72 @@ class DatabaseSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Technology',
+                'name' => 'Technology & Electronics',
                 'slug' => 'technology',
                 'children' => [
                     ['name' => 'Computers', 'slug' => 'computers'],
                     ['name' => 'Accessories', 'slug' => 'accessories'],
                 ],
             ],
+            [
+                'name' => 'Early Years',
+                'slug' => 'early-years',
+                'children' => [],
+            ],
+            [
+                'name' => 'Science & Lab',
+                'slug' => 'science-lab',
+                'children' => [],
+            ],
+            [
+                'name' => 'Music & Performing Arts',
+                'slug' => 'music-performing-arts',
+                'children' => [],
+            ],
+            [
+                'name' => 'Furniture & Storage',
+                'slug' => 'furniture-storage',
+                'children' => [],
+            ],
+            [
+                'name' => 'Books & Learning Resources',
+                'slug' => 'books-learning-resources',
+                'children' => [],
+            ],
+            [
+                'name' => 'SEN & Student Support',
+                'slug' => 'sen-student-support',
+                'children' => [],
+            ],
+            [
+                'name' => 'Facilities & Campus Supplies',
+                'slug' => 'facilities-campus-supplies',
+                'children' => [],
+            ],
+            [
+                'name' => 'Cleaning, Health & Safety',
+                'slug' => 'cleaning-health-safety',
+                'children' => [],
+            ],
+            [
+                'name' => 'Pantry & Hospitality',
+                'slug' => 'pantry-hospitality',
+                'children' => [],
+            ],
         ];
 
         $categories = [];
+
+        Category::query()
+            ->whereIn('slug', [
+                'classroom-supplies',
+                'art-craft',
+                'office-school-admin',
+                'technology-electronics',
+                'sports-outdoor',
+                'school-events-custom-products',
+            ])
+            ->delete();
 
         foreach ($catalog as $index => $categoryData) {
             $parent = Category::query()->updateOrCreate(

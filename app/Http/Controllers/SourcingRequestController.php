@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Sourcing\StoreSourcingRequestRequest;
+use App\Http\Resources\SourcingRequestResource;
 use App\Models\SourcingRequest;
 use Illuminate\Http\Request;
 
@@ -14,22 +15,10 @@ class SourcingRequestController extends Controller
             ->where('user_id', $request->user()->id)
             ->with('links')
             ->latest()
-            ->get()
-            ->map(fn (SourcingRequest $sourcingRequest) => [
-                'id' => $sourcingRequest->id,
-                'reference' => $sourcingRequest->reference,
-                'title' => $sourcingRequest->title,
-                'type' => $sourcingRequest->type,
-                'status' => $sourcingRequest->status,
-                'status_label' => $sourcingRequest->status_label,
-                'quantity' => $sourcingRequest->quantity,
-                'delivery_date' => $sourcingRequest->delivery_date?->toDateString(),
-                'created_at' => $sourcingRequest->created_at?->toISOString(),
-                'links' => $sourcingRequest->links->pluck('url'),
-            ]);
+            ->get();
 
         return response()->json([
-            'data' => $sourcingRequests,
+            'data' => SourcingRequestResource::collection($sourcingRequests),
         ]);
     }
 

@@ -51,6 +51,8 @@ class SourcingRequest extends Model
         return Attribute::make(
             get: fn () => match ($this->status) {
                 'submitted' => 'Submitted',
+                'accepted' => 'Accepted',
+                'rejected' => 'Rejected',
                 'under_review' => 'Under Review',
                 'needs_info' => 'Needs Info',
                 'quoted' => 'Quote Received',
@@ -65,6 +67,8 @@ class SourcingRequest extends Model
     {
         return Attribute::make(
             get: fn () => match ($this->status) {
+                'accepted' => 'Our team accepted this request and will continue with the next procurement steps.',
+                'rejected' => 'This request was declined. Please submit a revised request if needed.',
                 'needs_info' => 'Provide the missing details so our team can continue.',
                 'quoted' => 'Review the quote and approve the preferred option.',
                 'approved' => 'Approve the order so fulfillment can begin.',
@@ -77,6 +81,8 @@ class SourcingRequest extends Model
     {
         return Attribute::make(
             get: fn () => match ($this->status) {
+                'accepted' => 'View Accepted Request',
+                'rejected' => 'View Rejected Request',
                 'needs_info' => 'Complete Details',
                 'quoted' => 'Review Quote',
                 'approved' => 'Approve Order',

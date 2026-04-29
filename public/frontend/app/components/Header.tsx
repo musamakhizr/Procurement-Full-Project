@@ -51,9 +51,14 @@ export function Header() {
                     {t('header.aiAssistant')}
                   </Link>
                   {user?.is_admin && (
-                    <Link to="/admin/products" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium flex items-center gap-1">
+                    <Link to="/admin/requests" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium flex items-center gap-1">
                       <Settings className="w-3.5 h-3.5" />
-                      {t('header.admin')}
+                      Admin Requests
+                    </Link>
+                  )}
+                  {user?.is_admin && (
+                    <Link to="/admin/products" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium">
+                      Admin Products
                     </Link>
                   )}
                 </>
@@ -114,14 +119,14 @@ export function Header() {
             {/* User Menu or Sign In */}
             {isAuthenticated ? (
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-semibold transition-colors text-sm"
                 >
                   <User className="w-4 h-4" />
                   <span>{user?.name || t('header.account')}</span>
                 </button>
-                
+
                 {showUserMenu && (
                   <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-lg py-2">
                     <div className="px-4 py-2 border-b border-slate-200">
@@ -135,13 +140,18 @@ export function Header() {
                       {t('header.procurementList')}
                     </Link>
                     {user?.is_admin && (
-                      <Link to="/admin/products" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                      <Link to="/admin/requests" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                         <Settings className="w-3.5 h-3.5" />
-                        {t('header.admin')}
+                        Admin Requests
+                      </Link>
+                    )}
+                    {user?.is_admin && (
+                      <Link to="/admin/products" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                        Admin Products
                       </Link>
                     )}
                     <div className="border-t border-slate-200 my-2" />
-                    <button 
+                    <button
                       onClick={handleSignOut}
                       className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                     >

@@ -137,7 +137,7 @@ interface AuthResponse {
   user: User;
 }
 
-interface PaginatedResponse<T> {
+export interface PaginatedResponse<T> {
   data: T[];
   meta: {
     current_page: number;
@@ -243,10 +243,20 @@ export interface SourcingRequest {
   type: 'custom' | 'links';
   status: string;
   status_label: string;
+  details: string;
   quantity: number;
+  budget_text?: string | null;
   delivery_date: string | null;
+  notes?: string | null;
   created_at: string;
+  updated_at?: string;
   links: string[];
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    organization_name: string | null;
+  };
 }
 
 export async function submitSourcingRequest(payload: SourcingRequestPayload) {
@@ -256,6 +266,16 @@ export async function submitSourcingRequest(payload: SourcingRequestPayload) {
 
 export async function fetchSourcingRequests() {
   const { data } = await api.get<{ data: SourcingRequest[] }>('/sourcing-requests');
+  return data.data;
+}
+
+export async function fetchAdminSourcingRequests() {
+  const { data } = await api.get<{ data: SourcingRequest[] }>('/admin/sourcing-requests');
+  return data.data;
+}
+
+export async function updateAdminSourcingRequestStatus(id: number, status: 'accepted' | 'rejected') {
+  const { data } = await api.patch<{ data: SourcingRequest }>(`/admin/sourcing-requests/${id}`, { status });
   return data.data;
 }
 
@@ -269,15 +289,20 @@ export async function fetchAdminStats() {
   return data;
 }
 
-export async function fetchAdminProducts(search = '') {
+export async function fetchAdminProducts(search = '', page = 1) {
   const { data } = await api.get<PaginatedResponse<ProductSummary>>('/admin/products', {
-    params: { search },
+    params: { search, page },
   });
   return data;
 }
 
 export async function createAdminProduct(payload: AdminProductPayload) {
   const { data } = await api.post<ProductDetail>('/admin/products', payload);
+  return data;
+}
+
+export async function updateAdminProduct(id: number, payload: Partial<AdminProductPayload>) {
+  const { data } = await api.patch<ProductDetail>(`/admin/products/${id}`, payload);
   return data;
 }
 

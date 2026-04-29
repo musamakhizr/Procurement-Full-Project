@@ -1,18 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload } from 'lucide-react';
+import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProducts, fetchAdminStats, fetchCategories } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, PaginatedResponse, ProductSummary, updateAdminProduct } from '../api';
+
+const EMPTY_FORM = {
+  name: '',
+  sku: '',
+  categoryId: '',
+  description: '',
+  moq: '1',
+  stock: '0',
+  leadMin: '3',
+  leadMax: '5',
+  basePrice: '1.00',
+  imageUrl: '',
+};
 
 export function AdminProductsPage() {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [stats, setStats] = useState({ total_products: 0, active_products: 0, low_stock: 0, categories: 0 });
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<ProductSummary[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [form, setForm] = useState({
-    name: '', sku: '', categoryId: '', description: '', moq: '1', stock: '0', leadMin: '3', leadMax: '5', basePrice: '1.00', imageUrl: '',
+  const [pagination, setPagination] = useState<PaginatedResponse<ProductSummary>['meta']>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
   });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
   // Flatten to show parent > subcategory pairs for the product form
   const flatCategories = useMemo(() => {
@@ -20,7 +41,7 @@ export function AdminProductsPage() {
     for (const parent of categories) {
       if (parent.children && parent.children.length > 0) {
         for (const child of parent.children) {
-          flat.push({ id: child.id, label: `${parent.name} › ${child.name}` });
+          flat.push({ id: child.id, label: `${parent.name} > ${child.name}` });
         }
       } else {
         flat.push({ id: parent.id, label: parent.name });
@@ -29,29 +50,86 @@ export function AdminProductsPage() {
     return flat;
   }, [categories]);
 
-  const loadAdminData = async () => {
+  const loadAdminData = async (page = currentPage, search = searchQuery) => {
     const [statsResponse, productsResponse, categoriesResponse] = await Promise.all([
       fetchAdminStats(),
-      fetchAdminProducts(searchQuery),
+      fetchAdminProducts(search, page),
       fetchCategories(),
     ]);
 
     setStats(statsResponse);
     setProducts(productsResponse.data);
+    setPagination(productsResponse.meta);
     setCategories(categoriesResponse);
   };
 
+  const closeModal = () => {
+    setShowAddModal(false);
+    setEditingProductId(null);
+    setForm(EMPTY_FORM);
+    setFormError('');
+    setIsSubmitting(false);
+  };
+
+  const resolveCategoryId = (categoryName: string) => {
+    const matchingCategory = flatCategories.find((category) => category.label.endsWith(categoryName) || category.label === categoryName);
+    return matchingCategory ? String(matchingCategory.id) : '';
+  };
+
+  const buildProductPayload = (mode: 'create' | 'update') => ({
+    ...(form.categoryId ? { category_id: Number(form.categoryId) } : {}),
+    sku: form.sku,
+    name: form.name,
+    ...(form.description.trim() ? { description: form.description } : {}),
+    ...(form.imageUrl.trim() ? { image_url: form.imageUrl.trim() } : mode === 'update' ? {} : { image_url: undefined }),
+    moq: Number(form.moq),
+    lead_time_min_days: Number(form.leadMin),
+    lead_time_max_days: Number(form.leadMax),
+    stock_quantity: Number(form.stock),
+    is_verified: true,
+    is_customizable: false,
+    is_active: true,
+    base_price: Number(form.basePrice),
+    price_tiers: [
+      { min_quantity: 1, max_quantity: Math.max(Number(form.moq) - 1, 1), price: Number(form.basePrice) },
+      { min_quantity: Number(form.moq), max_quantity: null, price: Math.max(Number(form.basePrice) - 1, 0.5) },
+    ],
+  });
+
+  const parseLeadTime = (leadTime: string) => {
+    const matched = leadTime.match(/(\d+)\s*-\s*(\d+)/);
+    if (!matched) {
+      return { leadMin: '3', leadMax: '5' };
+    }
+
+    return {
+      leadMin: matched[1],
+      leadMax: matched[2],
+    };
+  };
+
   useEffect(() => {
-    void loadAdminData();
+    void loadAdminData(1, searchQuery);
   }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      void fetchAdminProducts(searchQuery).then((response) => setProducts(response.data));
+      setCurrentPage(1);
+      void fetchAdminProducts(searchQuery, 1).then((response) => {
+        setProducts(response.data);
+        setPagination(response.meta);
+      });
     }, 250);
 
     return () => clearTimeout(timeout);
   }, [searchQuery]);
+
+  useEffect(() => {
+    void fetchAdminProducts(searchQuery, currentPage).then((response) => {
+      setProducts(response.data);
+      setPagination(response.meta);
+    });
+  }, [currentPage]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -65,35 +143,86 @@ export function AdminProductsPage() {
   };
 
   const handleCreateProduct = async () => {
-    await createAdminProduct({
-      category_id: Number(form.categoryId),
-      sku: form.sku,
-      name: form.name,
-      description: form.description,
-      image_url: form.imageUrl || undefined,
-      moq: Number(form.moq),
-      lead_time_min_days: Number(form.leadMin),
-      lead_time_max_days: Number(form.leadMax),
-      stock_quantity: Number(form.stock),
-      is_verified: true,
-      is_customizable: false,
-      is_active: true,
-      base_price: Number(form.basePrice),
-      price_tiers: [
-        { min_quantity: 1, max_quantity: Math.max(Number(form.moq) - 1, 1), price: Number(form.basePrice) },
-        { min_quantity: Number(form.moq), max_quantity: null, price: Math.max(Number(form.basePrice) - 1, 0.5) },
-      ],
+    setIsSubmitting(true);
+    setFormError('');
+
+    try {
+      await createAdminProduct(buildProductPayload('create'));
+      closeModal();
+      await loadAdminData(currentPage, searchQuery);
+    } catch (error: any) {
+      setFormError(error?.response?.data?.message ?? 'Unable to create product.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditProduct = async (product: ProductSummary) => {
+    setEditingProductId(product.id);
+    setShowAddModal(true);
+    setFormError('');
+    const leadTime = parseLeadTime(product.lead_time);
+
+    setForm({
+      name: product.name,
+      sku: product.sku,
+      categoryId: resolveCategoryId(product.category),
+      description: '',
+      moq: String(product.moq),
+      stock: String(product.stock_quantity),
+      leadMin: leadTime.leadMin,
+      leadMax: leadTime.leadMax,
+      basePrice: product.price_tier_1?.price ? String(product.price_tier_1.price) : '1.00',
+      imageUrl: product.image || '',
     });
 
-    setShowAddModal(false);
-    setForm({ name: '', sku: '', categoryId: '', description: '', moq: '1', stock: '0', leadMin: '3', leadMax: '5', basePrice: '1.00', imageUrl: '' });
-    await loadAdminData();
+    try {
+      const productDetail = await fetchProduct(product.id);
+      const detailLeadTime = parseLeadTime(productDetail.lead_time);
+
+      setForm((currentForm) => ({
+        ...currentForm,
+        description: productDetail.description ?? currentForm.description,
+        leadMin: detailLeadTime.leadMin,
+        leadMax: detailLeadTime.leadMax,
+        basePrice: productDetail.pricing_tiers[0]?.price ? String(productDetail.pricing_tiers[0].price) : currentForm.basePrice,
+        imageUrl: productDetail.images[0] || currentForm.imageUrl,
+        categoryId: currentForm.categoryId || resolveCategoryId(productDetail.category),
+      }));
+    } catch (error) {
+      // Keep the lightweight row data in the form if the detail fetch fails.
+    }
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!editingProductId) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError('');
+
+    try {
+      await updateAdminProduct(editingProductId, buildProductPayload('update'));
+      closeModal();
+      await loadAdminData(currentPage, searchQuery);
+    } catch (error: any) {
+      setFormError(error?.response?.data?.message ?? 'Unable to update product.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteProduct = async (id: number) => {
     await deleteAdminProduct(id);
-    await loadAdminData();
+    const nextPage = products.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+    setCurrentPage(nextPage);
+    await loadAdminData(nextPage, searchQuery);
   };
+
+  const pageNumbers = useMemo(() => {
+    return Array.from({ length: pagination.last_page }, (_, index) => index + 1);
+  }, [pagination.last_page]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
@@ -116,7 +245,7 @@ export function AdminProductsPage() {
             <div className="flex gap-3 w-full md:w-auto">
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Upload className="w-4 h-4" /><span className="hidden md:inline">{t('admin.import')}</span></button>
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Download className="w-4 h-4" /><span className="hidden md:inline">{t('admin.export')}</span></button>
-              <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
+              <button onClick={() => { setEditingProductId(null); setForm(EMPTY_FORM); setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
             </div>
           </div>
         </div>
@@ -146,20 +275,75 @@ export function AdminProductsPage() {
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-600">{product.moq}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-semibold text-slate-900">{product.base_price_range}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(product.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => void handleDeleteProduct(product.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => void handleEditProduct(product)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit product">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => void handleDeleteProduct(product.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete product">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {pagination.last_page > 1 && (
+            <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-slate-500">
+                Showing {(pagination.current_page - 1) * pagination.per_page + 1}
+                {' '}to{' '}
+                {Math.min(pagination.current_page * pagination.per_page, pagination.total)}
+                {' '}of {pagination.total} products
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                  disabled={pagination.current_page === 1}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                {pageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    onClick={() => setCurrentPage(pageNumber)}
+                    className={`h-10 min-w-10 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                      pageNumber === pagination.current_page
+                        ? 'bg-[#4F6BFF] text-white'
+                        : 'border border-slate-200 text-slate-700 hover:border-[#4F6BFF] hover:text-[#4F6BFF]'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((page) => Math.min(page + 1, pagination.last_page))}
+                  disabled={pagination.current_page === pagination.last_page}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">{t('admin.addNewProduct')}</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6">{editingProductId ? 'Edit Product' : t('admin.addNewProduct')}</h2>
             <div className="space-y-4">
+              {formError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {formError}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">{t('admin.productName')}</label>
                 <input type="text" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
@@ -194,8 +378,10 @@ export function AdminProductsPage() {
                 <input type="text" value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Image URL" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
               </div>
               <div className="flex gap-4 justify-end pt-4">
-                <button onClick={() => setShowAddModal(false)} className="px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl hover:border-slate-300 transition-colors font-semibold">{t('admin.cancel')}</button>
-                <button onClick={() => void handleCreateProduct()} className="px-6 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold">{t('admin.create')}</button>
+                <button onClick={closeModal} disabled={isSubmitting} className="px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl hover:border-slate-300 transition-colors font-semibold disabled:cursor-not-allowed disabled:opacity-60">{t('admin.cancel')}</button>
+                <button onClick={() => void (editingProductId ? handleUpdateProduct() : handleCreateProduct())} disabled={isSubmitting} className="px-6 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold disabled:cursor-not-allowed disabled:opacity-60">
+                  {isSubmitting ? 'Saving...' : editingProductId ? 'Update Product' : t('admin.create')}
+                </button>
               </div>
             </div>
           </div>

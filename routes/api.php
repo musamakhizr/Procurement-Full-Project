@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\AdminSourcingRequestController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
@@ -39,5 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/products', [AdminProductController::class, 'store']);
         Route::patch('/products/{product}', [AdminProductController::class, 'update']);
         Route::delete('/products/{product}', [AdminProductController::class, 'destroy']);
+
+        Route::get('/sourcing-requests', [AdminSourcingRequestController::class, 'index']);
+        Route::patch('/sourcing-requests/{sourcingRequest}', [AdminSourcingRequestController::class, 'update']);
     });
 });

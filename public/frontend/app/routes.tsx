@@ -9,6 +9,7 @@ import { GetStartedPage } from './pages/GetStartedPage';
 import { SourcingPage } from './pages/SourcingPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { AdminProductsPage } from './pages/AdminProductsPage';
+import { AdminRequestsPage } from './pages/AdminRequestsPage';
 import { ProcurementListPage } from './pages/ProcurementListPage';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -84,6 +85,14 @@ export const router = createBrowserRouter([
       {
         path: 'get-started',
         Component: GetStartedPage,
+      },
+      {
+        path: 'admin/requests',
+        element: (
+          <ProtectedRoute adminOnly>
+            <AdminRequestsPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: 'admin/products',

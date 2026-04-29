@@ -5,7 +5,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { fetchSourcingRequests, SourcingRequest } from '../api';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-  submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-700', icon: Clock },
+  submitted: { label: 'Pending', color: 'bg-amber-100 text-amber-700', icon: Clock },
+  accepted: { label: 'Accepted', color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
+  rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700', icon: AlertCircle },
   under_review: { label: 'Under Review', color: 'bg-purple-100 text-purple-700', icon: Clock },
   needs_info: { label: 'Needs Info', color: 'bg-orange-100 text-orange-700', icon: AlertCircle },
   quoted: { label: 'Quote Ready', color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
