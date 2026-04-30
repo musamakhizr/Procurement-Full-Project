@@ -132,6 +132,15 @@ export interface AdminProductPayload {
   }>;
 }
 
+export interface ImportedMarketplaceProduct {
+  title: string;
+  original_price: string | null;
+  detail_url: string | null;
+  image_url: string | null;
+  platform: string;
+  num_iid: string;
+}
+
 interface AuthResponse {
   token: string;
   user: User;
@@ -308,4 +317,17 @@ export async function updateAdminProduct(id: number, payload: Partial<AdminProdu
 
 export async function deleteAdminProduct(id: number) {
   await api.delete(`/admin/products/${id}`);
+}
+
+export async function fetchAdminProductFromLink(link: string) {
+  const { data } = await api.get<{
+    platform: string;
+    num_iid: string;
+    product: ImportedMarketplaceProduct;
+    raw: Record<string, unknown>;
+  }>('/admin/products/from-link', {
+    params: { link },
+  });
+
+  return data;
 }

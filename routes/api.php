@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProcurementListController;
+use App\Http\Controllers\ProductFromLinkController;
 use App\Http\Controllers\SourcingRequestController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/product-stats', [AdminProductController::class, 'stats']);
         Route::get('/products', [AdminProductController::class, 'index']);
+        Route::get('/products/from-link', [ProductFromLinkController::class, 'show']);
         Route::post('/products', [AdminProductController::class, 'store']);
         Route::patch('/products/{product}', [AdminProductController::class, 'update']);
         Route::delete('/products/{product}', [AdminProductController::class, 'destroy']);
