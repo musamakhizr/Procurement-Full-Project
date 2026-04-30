@@ -71,6 +71,7 @@ fi
 # These are required for production builds; deleting them silently breaks prod.
 # ─────────────────────────────────────────────────────────────────────────────
 CRITICAL_FILES=(
+    ".env.example"
     "public/frontend/.env.production"
     "public/frontend/vite.config.ts"
     "public/frontend/package-lock.json"
