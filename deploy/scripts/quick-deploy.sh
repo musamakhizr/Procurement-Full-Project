@@ -87,7 +87,16 @@ fi
 if [ "$needs_npm" = true ] && [ -d "$APP/public/frontend" ]; then
     log "Building frontend (npm ci + npm run build)…"
     pushd "$APP/public/frontend" >/dev/null
-    if [ ! -d node_modules ] || [ public/frontend/package-lock.json -nt node_modules/.installed-marker 2>/dev/null ]; then
+
+    # Defensive: pre-clean dist/ ourselves (not via Vite) so ownership/permission
+    # issues from a previous root-built dist surface clearly here, not deep in vite.
+    if [ -d dist ] && [ ! -w dist ]; then
+        warn "dist/ not writable by $(whoami) — attempting chown via sudo"
+        sudo chown -R "$(id -u):$(id -g)" dist 2>/dev/null || true
+    fi
+    rm -rf dist 2>/dev/null || { warn "rm -rf dist failed; sudo retry"; sudo rm -rf dist; }
+
+    if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.installed-marker 2>/dev/null ]; then
         npm ci --no-audit --no-fund
         touch node_modules/.installed-marker
     fi
