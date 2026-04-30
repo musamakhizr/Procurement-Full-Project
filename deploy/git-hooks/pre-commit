@@ -43,4 +43,54 @@ if [ -n "$VIOLATIONS" ]; then
     echo -e "${c_yellow}If this is a false positive, edit deploy/git-hooks/pre-commit.${c_reset}"
     exit 1
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Guard: vite base must remain '/frontend/dist/' or production SPA breaks.
+# (See production-doc/06-frontend.md and the comment block in vite.config.ts.)
+# ─────────────────────────────────────────────────────────────────────────────
+VITE_CONFIG="public/frontend/vite.config.ts"
+if echo "$STAGED" | grep -qx "$VITE_CONFIG"; then
+    STAGED_BASE=$(git show :"$VITE_CONFIG" | grep -oE "base:\s*'[^']*'" | head -1 || true)
+    EXPECTED="base: '/frontend/dist/'"
+    if [ -n "$STAGED_BASE" ] && [ "$STAGED_BASE" != "$EXPECTED" ]; then
+        echo -e "${c_red}❌ Pre-commit blocked: vite.config.ts 'base' must be '/frontend/dist/'${c_reset}"
+        echo
+        echo "  Found:    $STAGED_BASE"
+        echo "  Required: $EXPECTED"
+        echo
+        echo -e "${c_yellow}Why: production nginx serves built assets only at /frontend/dist/.${c_reset}"
+        echo -e "${c_yellow}Changing this silently breaks the SPA on deep routes.${c_reset}"
+        echo -e "${c_yellow}If you genuinely need a different path, also update${c_reset}"
+        echo -e "${c_yellow}deploy/templates/nginx-hexugo.conf and discuss with the team first.${c_reset}"
+        exit 1
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Guard: critical config files must NOT be deleted.
+# These are required for production builds; deleting them silently breaks prod.
+# ─────────────────────────────────────────────────────────────────────────────
+CRITICAL_FILES=(
+    "public/frontend/.env.production"
+    "public/frontend/vite.config.ts"
+    "public/frontend/package-lock.json"
+    "deploy/templates/nginx-hexugo.conf"
+    "deploy/templates/php-fpm-hexugo.conf"
+    "deploy/templates/supervisor-hexugo.conf"
+    "deploy/templates/env.production.template"
+    "deploy/scripts/quick-deploy.sh"
+    "bootstrap/app.php"
+)
+DELETED=$(git diff --cached --name-only --diff-filter=D)
+for f in "${CRITICAL_FILES[@]}"; do
+    if echo "$DELETED" | grep -qFx "$f"; then
+        echo -e "${c_red}❌ Pre-commit blocked: critical file is being deleted${c_reset}"
+        echo "  $f"
+        echo
+        echo -e "${c_yellow}This file is required for production. Discuss with team before removing.${c_reset}"
+        echo -e "${c_yellow}If you really need to remove it, edit deploy/git-hooks/pre-commit.${c_reset}"
+        exit 1
+    fi
+done
+
 exit 0
