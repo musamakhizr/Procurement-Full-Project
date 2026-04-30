@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# pre-commit — Block commits that touch generated artifacts that should be gitignored.
+#
+# Install once per developer:
+#   bash deploy/git-hooks/install.sh
+#
+# Or manually:
+#   ln -sf ../../deploy/git-hooks/pre-commit .git/hooks/pre-commit
+#
+set -euo pipefail
+
+c_red="\033[0;31m"; c_yellow="\033[0;33m"; c_reset="\033[0m"
+
+# Patterns that should NEVER appear in a commit
+FORBIDDEN_PATTERNS=(
+    'public/frontend/dist/'
+    'public/frontend/node_modules/'
+    'node_modules/'
+    'vendor/'
+    '\.env$'
+    'deploy/CREDENTIALS\.local'
+    'production-doc/'
+    '\.claude/'
+)
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+VIOLATIONS=""
+for pat in "${FORBIDDEN_PATTERNS[@]}"; do
+    HITS=$(echo "$STAGED" | grep -E "$pat" || true)
+    if [ -n "$HITS" ]; then
+        VIOLATIONS+="\n  pattern: $pat\n$(echo "$HITS" | sed 's/^/    /')\n"
+    fi
+done
+
+if [ -n "$VIOLATIONS" ]; then
+    echo -e "${c_red}❌ Pre-commit blocked: forbidden files staged${c_reset}"
+    echo -e "$VIOLATIONS"
+    echo -e "${c_yellow}These paths must never be committed (they are generated, secret, or local-only).${c_reset}"
+    echo -e "${c_yellow}Unstage them:${c_reset}"
+    echo "    git restore --staged <path>"
+    echo -e "${c_yellow}If this is a false positive, edit deploy/git-hooks/pre-commit.${c_reset}"
+    exit 1
+fi
+exit 0
