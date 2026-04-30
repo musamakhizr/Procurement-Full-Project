@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, PaginatedResponse, ProductSummary, updateAdminProduct } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, PaginatedResponse, ProductSummary, updateAdminProduct } from '../api';
 
 const EMPTY_FORM = {
   name: '',
@@ -34,6 +34,11 @@ export function AdminProductsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [productLink, setProductLink] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [previewProduct, setPreviewProduct] = useState<ImportedMarketplaceProduct | null>(null);
+  const [importedProduct, setImportedProduct] = useState<ImportedMarketplaceProduct | null>(null);
 
   // Flatten to show parent > subcategory pairs for the product form
   const flatCategories = useMemo(() => {
@@ -69,6 +74,11 @@ export function AdminProductsPage() {
     setForm(EMPTY_FORM);
     setFormError('');
     setIsSubmitting(false);
+    setProductLink('');
+    setIsImporting(false);
+    setImportError('');
+    setPreviewProduct(null);
+    setImportedProduct(null);
   };
 
   const resolveCategoryId = (categoryName: string) => {
@@ -95,6 +105,21 @@ export function AdminProductsPage() {
       { min_quantity: Number(form.moq), max_quantity: null, price: Math.max(Number(form.basePrice) - 1, 0.5) },
     ],
   });
+
+  const createSkuFromImportedProduct = (product: ImportedMarketplaceProduct) => {
+    const prefix = product.platform.slice(0, 2).toUpperCase();
+    return `${prefix}-${product.num_iid}`.slice(0, 100);
+  };
+
+  const buildImportedDescription = (product: ImportedMarketplaceProduct) => {
+    return [
+      product.title,
+      product.detail_url ? `Source URL: ${product.detail_url}` : null,
+      `Imported from ${product.platform.toUpperCase()}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  };
 
   const parseLeadTime = (leadTime: string) => {
     const matched = leadTime.match(/(\d+)\s*-\s*(\d+)/);
@@ -155,6 +180,51 @@ export function AdminProductsPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleFetchProductFromLink = async () => {
+    if (!productLink.trim()) {
+      setImportError('Please paste a Taobao, 1688, or JD product link.');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError('');
+    setPreviewProduct(null);
+
+    try {
+      const response = await fetchAdminProductFromLink(productLink.trim());
+      setPreviewProduct(response.product);
+    } catch (error: any) {
+      setImportError(error?.response?.data?.message ?? 'Unable to fetch product details from the provided link.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleInsertImportedProduct = () => {
+    if (!previewProduct) {
+      return;
+    }
+
+    setImportedProduct(previewProduct);
+    setForm((currentForm) => ({
+      ...currentForm,
+      name: previewProduct.title || currentForm.name,
+      sku: currentForm.sku || createSkuFromImportedProduct(previewProduct),
+      description: buildImportedDescription(previewProduct),
+      basePrice: previewProduct.original_price || currentForm.basePrice,
+      imageUrl: previewProduct.image_url || currentForm.imageUrl,
+    }));
+    setPreviewProduct(null);
+    setProductLink('');
+    setImportError('');
+  };
+
+  const handleCancelImportedPreview = () => {
+    setPreviewProduct(null);
+    setImportError('');
+    setProductLink('');
   };
 
   const handleEditProduct = async (product: ProductSummary) => {
@@ -245,7 +315,7 @@ export function AdminProductsPage() {
             <div className="flex gap-3 w-full md:w-auto">
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Upload className="w-4 h-4" /><span className="hidden md:inline">{t('admin.import')}</span></button>
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Download className="w-4 h-4" /><span className="hidden md:inline">{t('admin.export')}</span></button>
-              <button onClick={() => { setEditingProductId(null); setForm(EMPTY_FORM); setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
+              <button onClick={() => { setEditingProductId(null); setForm(EMPTY_FORM); setProductLink(''); setImportError(''); setPreviewProduct(null); setImportedProduct(null); setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
             </div>
           </div>
         </div>
@@ -344,6 +414,59 @@ export function AdminProductsPage() {
                   {formError}
                 </div>
               )}
+              {!editingProductId && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-bold text-slate-900">Import from Taobao, 1688, or JD</h3>
+                    <p className="text-sm text-slate-600">Paste a product link to fetch the image, name, and price before adding it to your catalog.</p>
+                  </div>
+                  <div className="flex flex-col gap-3 md:flex-row">
+                    <div className="flex-1">
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">Product Link</label>
+                      <input
+                        type="url"
+                        value={productLink}
+                        onChange={(event) => setProductLink(event.target.value)}
+                        placeholder="https://item.taobao.com/item.htm?id=..."
+                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]"
+                      />
+                    </div>
+                    <div className="md:self-end">
+                      <button
+                        onClick={() => void handleFetchProductFromLink()}
+                        disabled={isImporting}
+                        className="px-5 py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isImporting ? 'Fetching...' : 'Fetch Item'}
+                      </button>
+                    </div>
+                  </div>
+                  {importError && (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {importError}
+                    </div>
+                  )}
+                  {importedProduct && (
+                    <div className="mt-4 flex items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="h-20 w-20 overflow-hidden rounded-xl bg-white border border-emerald-100 flex-shrink-0">
+                        {importedProduct.image_url ? (
+                          <img src={importedProduct.image_url} alt={importedProduct.title} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-slate-400">No image</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Imported item</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900 line-clamp-2">{importedProduct.title}</p>
+                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
+                          <span>Price: {importedProduct.original_price ?? 'N/A'}</span>
+                          <span>Platform: {importedProduct.platform.toUpperCase()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">{t('admin.productName')}</label>
                 <input type="text" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
@@ -366,16 +489,34 @@ export function AdminProductsPage() {
                 <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF] resize-none" rows={4} />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" value={form.moq} onChange={(event) => setForm({ ...form, moq: event.target.value })} placeholder="MOQ" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
-                <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} placeholder="Stock" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">MOQ</label>
+                  <input type="number" value={form.moq} onChange={(event) => setForm({ ...form, moq: event.target.value })} placeholder="MOQ" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t('admin.stock')}</label>
+                  <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} placeholder="Stock" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" value={form.leadMin} onChange={(event) => setForm({ ...form, leadMin: event.target.value })} placeholder="Lead time min" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
-                <input type="number" value={form.leadMax} onChange={(event) => setForm({ ...form, leadMax: event.target.value })} placeholder="Lead time max" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Lead Time Min (Days)</label>
+                  <input type="number" value={form.leadMin} onChange={(event) => setForm({ ...form, leadMin: event.target.value })} placeholder="Lead time min" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Lead Time Max (Days)</label>
+                  <input type="number" value={form.leadMax} onChange={(event) => setForm({ ...form, leadMax: event.target.value })} placeholder="Lead time max" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" step="0.01" value={form.basePrice} onChange={(event) => setForm({ ...form, basePrice: event.target.value })} placeholder="Base price" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
-                <input type="text" value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Image URL" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Base Price</label>
+                  <input type="number" step="0.01" value={form.basePrice} onChange={(event) => setForm({ ...form, basePrice: event.target.value })} placeholder="Base price" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Image URL</label>
+                  <input type="text" value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Image URL" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF]" />
+                </div>
               </div>
               <div className="flex gap-4 justify-end pt-4">
                 <button onClick={closeModal} disabled={isSubmitting} className="px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl hover:border-slate-300 transition-colors font-semibold disabled:cursor-not-allowed disabled:opacity-60">{t('admin.cancel')}</button>
@@ -383,6 +524,38 @@ export function AdminProductsPage() {
                   {isSubmitting ? 'Saving...' : editingProductId ? 'Update Product' : t('admin.create')}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewProduct && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-8 shadow-2xl">
+            <div className="mb-6 flex items-start gap-6">
+              <div className="h-40 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 flex-shrink-0">
+                {previewProduct.image_url ? (
+                  <img src={previewProduct.image_url} alt={previewProduct.title} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">No image</div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#4F6BFF]">{previewProduct.platform.toUpperCase()} Product</p>
+                <h3 className="mt-2 text-2xl font-bold text-slate-900">{previewProduct.title}</h3>
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <p><span className="font-semibold text-slate-900">Original Price:</span> {previewProduct.original_price ?? 'N/A'}</p>
+                  <p className="break-all"><span className="font-semibold text-slate-900">Detail URL:</span> {previewProduct.detail_url ?? 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={handleCancelImportedPreview} className="px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl hover:border-slate-300 transition-colors font-semibold">
+                Cancel
+              </button>
+              <button onClick={handleInsertImportedProduct} className="px-6 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold">
+                Insert
+              </button>
             </div>
           </div>
         </div>
