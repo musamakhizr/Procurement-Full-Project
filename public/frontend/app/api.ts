@@ -27,6 +27,7 @@ export interface ProductSummary {
   category_slug: string;
   subcategory_slug: string | null;
   image: string | null;
+  image_source_url?: string | null;
   moq: number;
   lead_time: string;
   verified: boolean;
@@ -47,6 +48,7 @@ export interface ProductDetail {
   category_slug: string;
   description: string;
   images: string[];
+  image_source_url?: string | null;
   moq: number;
   lead_time: string;
   in_stock: boolean;
@@ -137,6 +139,7 @@ export interface ImportedMarketplaceProduct {
   original_price: string | null;
   detail_url: string | null;
   image_url: string | null;
+  display_image_url?: string | null;
   platform: string;
   num_iid: string;
 }

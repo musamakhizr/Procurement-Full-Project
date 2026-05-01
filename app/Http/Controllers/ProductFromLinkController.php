@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\RemoteImage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -144,11 +145,14 @@ class ProductFromLinkController extends Controller
             ?? data_get($item, 'item_imgs.0')
             ?? null;
 
+        $imageUrl = $this->normalizeUrl($imageUrl);
+
         return [
             'title' => $title,
             'original_price' => $this->normalizePrice($price),
             'detail_url' => $this->normalizeUrl($detailUrl),
-            'image_url' => $this->normalizeUrl($imageUrl),
+            'image_url' => $imageUrl,
+            'display_image_url' => RemoteImage::proxiedUrl($imageUrl),
             'platform' => $platform,
             'num_iid' => $numIid,
         ];

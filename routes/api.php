@@ -7,6 +7,7 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProcurementListController;
 use App\Http\Controllers\ProductFromLinkController;
+use App\Http\Controllers\RemoteImageController;
 use App\Http\Controllers\SourcingRequestController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,6 +24,9 @@ Route::prefix('auth')->group(function () {
 Route::get('/categories', [CatalogController::class, 'categories']);
 Route::get('/products', [CatalogController::class, 'products']);
 Route::get('/products/{product}', [CatalogController::class, 'show']);
+Route::get('/remote-images', RemoteImageController::class)
+    ->middleware('signed')
+    ->name('remote-images.show');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard', DashboardController::class);

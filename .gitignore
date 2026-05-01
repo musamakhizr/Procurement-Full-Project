@@ -33,3 +33,4 @@ Homestead.yaml
 Thumbs.db
 /production-doc
 .claude/
+public/frontend/vite.config.ts

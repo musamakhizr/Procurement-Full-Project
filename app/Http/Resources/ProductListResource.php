@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\RemoteImage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,7 +20,8 @@ class ProductListResource extends JsonResource
             'category' => $this->category?->name,
             'category_slug' => $this->category?->parent?->slug ?? $this->category?->slug,
             'subcategory_slug' => $this->category?->parent ? $this->category?->slug : null,
-            'image' => $this->image_url,
+            'image' => RemoteImage::proxiedUrl($this->image_url),
+            'image_source_url' => $this->image_url,
             'moq' => $this->moq,
             'lead_time' => $this->formatted_lead_time,
             'verified' => $this->is_verified,

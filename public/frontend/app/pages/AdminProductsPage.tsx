@@ -133,6 +133,10 @@ export function AdminProductsPage() {
     };
   };
 
+  const resolveImportedDisplayImage = (product: ImportedMarketplaceProduct) => {
+    return product.display_image_url || product.image_url;
+  };
+
   useEffect(() => {
     void loadAdminData(1, searchQuery);
   }, []);
@@ -243,7 +247,7 @@ export function AdminProductsPage() {
       leadMin: leadTime.leadMin,
       leadMax: leadTime.leadMax,
       basePrice: product.price_tier_1?.price ? String(product.price_tier_1.price) : '1.00',
-      imageUrl: product.image || '',
+      imageUrl: product.image_source_url || product.image || '',
     });
 
     try {
@@ -256,7 +260,7 @@ export function AdminProductsPage() {
         leadMin: detailLeadTime.leadMin,
         leadMax: detailLeadTime.leadMax,
         basePrice: productDetail.pricing_tiers[0]?.price ? String(productDetail.pricing_tiers[0].price) : currentForm.basePrice,
-        imageUrl: productDetail.images[0] || currentForm.imageUrl,
+        imageUrl: productDetail.image_source_url || currentForm.imageUrl,
         categoryId: currentForm.categoryId || resolveCategoryId(productDetail.category),
       }));
     } catch (error) {
@@ -450,7 +454,7 @@ export function AdminProductsPage() {
                     <div className="mt-4 flex items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                       <div className="h-20 w-20 overflow-hidden rounded-xl bg-white border border-emerald-100 flex-shrink-0">
                         {importedProduct.image_url ? (
-                          <img src={importedProduct.image_url} alt={importedProduct.title} className="h-full w-full object-cover" />
+                          <img src={resolveImportedDisplayImage(importedProduct) ?? undefined} alt={importedProduct.title} className="h-full w-full object-cover" />
                         ) : (
                           <div className="flex h-full items-center justify-center text-xs text-slate-400">No image</div>
                         )}
@@ -535,7 +539,7 @@ export function AdminProductsPage() {
             <div className="mb-6 flex items-start gap-6">
               <div className="h-40 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 flex-shrink-0">
                 {previewProduct.image_url ? (
-                  <img src={previewProduct.image_url} alt={previewProduct.title} className="h-full w-full object-cover" />
+                  <img src={resolveImportedDisplayImage(previewProduct) ?? undefined} alt={previewProduct.title} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-slate-400">No image</div>
                 )}
