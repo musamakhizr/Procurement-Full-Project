@@ -565,7 +565,7 @@ export function AdminProductsPage() {
 
       {previewProduct && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-8 shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white p-8 shadow-2xl">
             <div className="mb-6 flex items-start gap-6">
               <div className="h-40 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 flex-shrink-0">
                 {previewProduct.image_url ? (
@@ -586,7 +586,9 @@ export function AdminProductsPage() {
             {previewProduct.description && (
               <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="mb-2 text-sm font-semibold text-slate-900">Imported Description</p>
-                <p className="whitespace-pre-line text-sm text-slate-700">{previewProduct.description}</p>
+                <div className="max-h-64 overflow-y-auto pr-2">
+                  <p className="whitespace-pre-line text-sm text-slate-700">{previewProduct.description}</p>
+                </div>
               </div>
             )}
             <div className="flex justify-end gap-3">
