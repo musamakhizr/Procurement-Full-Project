@@ -136,26 +136,129 @@ class ProductFromLinkController extends Controller
             ?? $item['url']
             ?? $fallbackLink;
 
-        $imageUrl = $item['pic_url']
-            ?? $item['main_pic']
-            ?? $item['image']
-            ?? $item['img']
-            ?? data_get($item, 'images.0')
-            ?? data_get($item, 'item_imgs.0.url')
-            ?? data_get($item, 'item_imgs.0')
-            ?? null;
-
-        $imageUrl = $this->normalizeUrl($imageUrl);
+        $images = $this->extractImageUrls($item);
+        $imageUrl = $images[0] ?? null;
+        $detailUrl = $this->normalizeUrl($detailUrl);
+        $descriptionHtml = $this->normalizeDescriptionHtml($item['desc'] ?? null);
+        $description = $this->buildDescription($item);
 
         return [
             'title' => $title,
             'original_price' => $this->normalizePrice($price),
-            'detail_url' => $this->normalizeUrl($detailUrl),
+            'detail_url' => $detailUrl,
+            'description' => $description,
+            'description_html' => $descriptionHtml,
             'image_url' => $imageUrl,
             'display_image_url' => RemoteImage::proxiedUrl($imageUrl),
+            'images' => $images,
+            'display_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $images),
             'platform' => $platform,
             'num_iid' => $numIid,
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractImageUrls(array $item): array
+    {
+        $candidates = [
+            $item['pic_url'] ?? null,
+            $item['main_pic'] ?? null,
+            $item['image'] ?? null,
+            $item['img'] ?? null,
+            ...$this->extractArrayImageUrls($item['images'] ?? []),
+            ...$this->extractArrayImageUrls($item['item_imgs'] ?? []),
+            ...$this->extractArrayImageUrls($item['desc_img'] ?? []),
+            ...$this->extractPropsImageUrls($item['props_img'] ?? []),
+            ...$this->extractDescriptionHtmlImageUrls($item['desc'] ?? null),
+        ];
+
+        return collect($candidates)
+            ->map(fn ($url) => is_string($url) ? $this->normalizeUrl($url) : null)
+            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractArrayImageUrls(array $images): array
+    {
+        return collect($images)
+            ->map(function ($image) {
+                if (is_string($image)) {
+                    return $image;
+                }
+
+                if (is_array($image)) {
+                    return $image['url'] ?? $image['image'] ?? $image['img'] ?? null;
+                }
+
+                return null;
+            })
+            ->filter(fn ($url) => is_string($url) && $url !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  mixed  $propsImages
+     * @return array<int, string>
+     */
+    private function extractPropsImageUrls(mixed $propsImages): array
+    {
+        if (! is_array($propsImages)) {
+            return [];
+        }
+
+        return collect($propsImages)
+            ->flatten()
+            ->filter(fn ($url) => is_string($url) && $url !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractDescriptionHtmlImageUrls(?string $descriptionHtml): array
+    {
+        if (blank($descriptionHtml)) {
+            return [];
+        }
+
+        preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', $descriptionHtml, $matches);
+
+        return array_values(array_filter($matches[1] ?? []));
+    }
+
+    private function normalizeDescriptionHtml(?string $descriptionHtml): ?string
+    {
+        return blank($descriptionHtml) ? null : trim($descriptionHtml);
+    }
+
+    private function buildDescription(array $item): string
+    {
+        $shortDescription = trim(strip_tags((string) ($item['desc_short'] ?? '')));
+        $htmlDescription = trim(strip_tags((string) ($item['desc'] ?? '')));
+
+        $propertyLines = collect($item['props'] ?? [])
+            ->filter(fn ($prop) => is_array($prop) && filled($prop['name'] ?? null) && filled($prop['value'] ?? null))
+            ->map(fn (array $prop) => "{$prop['name']}: {$prop['value']}")
+            ->values()
+            ->all();
+
+        return collect([
+            $shortDescription,
+            $htmlDescription,
+            $propertyLines !== [] ? implode(PHP_EOL, $propertyLines) : null,
+        ])
+            ->filter(fn ($value) => is_string($value) && trim($value) !== '')
+            ->unique()
+            ->implode(PHP_EOL.PHP_EOL);
     }
 
     private function normalizeUrl(null|string $value): ?string

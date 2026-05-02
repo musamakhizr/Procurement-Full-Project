@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources;
 
-use App\Support\RemoteImage;
+use App\Support\ProductImageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,7 +18,7 @@ class ProcurementListItemResource extends JsonResource
             'category' => $this->product?->category?->name,
             'quantity' => $this->quantity,
             'unit_price' => (float) $this->unit_price,
-            'image' => RemoteImage::proxiedUrl($this->product?->image_url),
+            'image' => ProductImageUrl::fromStoredPath($this->product?->image_url),
             'moq' => $this->product?->moq,
             'line_total' => round($this->quantity * $this->unit_price, 2),
         ];

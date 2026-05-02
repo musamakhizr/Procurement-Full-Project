@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Product extends Model
 {
@@ -18,6 +19,10 @@ class Product extends Model
         'name',
         'description',
         'image_url',
+        'source_platform',
+        'source_product_id',
+        'source_url',
+        'source_image_url',
         'moq',
         'lead_time_min_days',
         'lead_time_max_days',
@@ -45,6 +50,11 @@ class Product extends Model
         return $this->hasMany(ProductPriceTier::class)->orderBy('min_quantity');
     }
 
+    public function productImages(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
+    }
+
     protected function formattedLeadTime(): Attribute
     {
         return Attribute::make(
@@ -67,5 +77,22 @@ class Product extends Model
             ->first(fn (ProductPriceTier $tier) => $quantity >= $tier->min_quantity && ($tier->max_quantity === null || $quantity <= $tier->max_quantity));
 
         return (float) ($tier?->price ?? $this->base_price);
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    public function galleryPaths(): Collection
+    {
+        if ($this->relationLoaded('productImages') && $this->productImages->isNotEmpty()) {
+            return $this->productImages
+                ->pluck('path')
+                ->filter(fn ($path) => is_string($path) && $path !== '')
+                ->values();
+        }
+
+        return collect([$this->image_url])
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->values();
     }
 }

@@ -42,14 +42,14 @@ export function AdminProductsPage() {
 
   // Flatten to show parent > subcategory pairs for the product form
   const flatCategories = useMemo(() => {
-    const flat: Array<{ id: number; label: string }> = [];
+    const flat: Array<{ id: number; label: string; slug: string }> = [];
     for (const parent of categories) {
       if (parent.children && parent.children.length > 0) {
         for (const child of parent.children) {
-          flat.push({ id: child.id, label: `${parent.name} > ${child.name}` });
+          flat.push({ id: child.id, label: `${parent.name} > ${child.name}`, slug: child.slug });
         }
       } else {
-        flat.push({ id: parent.id, label: parent.name });
+        flat.push({ id: parent.id, label: parent.name, slug: parent.slug });
       }
     }
     return flat;
@@ -92,6 +92,17 @@ export function AdminProductsPage() {
     name: form.name,
     ...(form.description.trim() ? { description: form.description } : {}),
     ...(form.imageUrl.trim() ? { image_url: form.imageUrl.trim() } : mode === 'update' ? {} : { image_url: undefined }),
+    ...(importedProduct ? {
+      import_source: {
+        platform: importedProduct.platform,
+        num_iid: importedProduct.num_iid,
+        detail_url: importedProduct.detail_url,
+        image_url: importedProduct.image_url,
+        description: importedProduct.description,
+        description_html: importedProduct.description_html,
+        images: importedProduct.images,
+      },
+    } : {}),
     moq: Number(form.moq),
     lead_time_min_days: Number(form.leadMin),
     lead_time_max_days: Number(form.leadMax),
@@ -112,13 +123,7 @@ export function AdminProductsPage() {
   };
 
   const buildImportedDescription = (product: ImportedMarketplaceProduct) => {
-    return [
-      product.title,
-      product.detail_url ? `Source URL: ${product.detail_url}` : null,
-      `Imported from ${product.platform.toUpperCase()}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    return product.description?.trim() ?? '';
   };
 
   const parseLeadTime = (leadTime: string) => {
@@ -135,6 +140,30 @@ export function AdminProductsPage() {
 
   const resolveImportedDisplayImage = (product: ImportedMarketplaceProduct) => {
     return product.display_image_url || product.image_url;
+  };
+
+  const detectImportedCategoryId = (product: ImportedMarketplaceProduct) => {
+    const haystack = `${product.title} ${product.description ?? ''}`.toLowerCase();
+
+    const keywordMappings: Array<{ categorySlug: string; keywords: string[] }> = [
+      { categorySlug: 'early-years', keywords: ['toy', 'toys', 'plush', 'doll', 'keychain', 'stuffed', '娃娃', '毛绒', '玩具', '公仔'] },
+      { categorySlug: 'student-supplies', keywords: ['bag', 'backpack', 'pencil', 'notebook', 'stationery'] },
+      { categorySlug: 'decorations', keywords: ['decoration', 'banner', 'balloon', 'gift', 'event'] },
+      { categorySlug: 'accessories', keywords: ['mouse', 'keyboard', 'usb', 'charger', 'cable'] },
+      { categorySlug: 'tableware', keywords: ['cup', 'plate', 'tableware', 'fork', 'spoon'] },
+    ];
+
+    for (const mapping of keywordMappings) {
+      if (mapping.keywords.some((keyword) => haystack.includes(keyword))) {
+        const category = flatCategories.find((item) => item.slug === mapping.categorySlug);
+
+        if (category) {
+          return String(category.id);
+        }
+      }
+    }
+
+    return flatCategories.find((item) => item.slug === 'early-years')?.id?.toString() ?? '';
   };
 
   useEffect(() => {
@@ -219,6 +248,7 @@ export function AdminProductsPage() {
       description: buildImportedDescription(previewProduct),
       basePrice: previewProduct.original_price || currentForm.basePrice,
       imageUrl: previewProduct.image_url || currentForm.imageUrl,
+      categoryId: currentForm.categoryId || detectImportedCategoryId(previewProduct),
     }));
     setPreviewProduct(null);
     setProductLink('');
@@ -553,6 +583,12 @@ export function AdminProductsPage() {
                 </div>
               </div>
             </div>
+            {previewProduct.description && (
+              <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="mb-2 text-sm font-semibold text-slate-900">Imported Description</p>
+                <p className="whitespace-pre-line text-sm text-slate-700">{previewProduct.description}</p>
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button onClick={handleCancelImportedPreview} className="px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl hover:border-slate-300 transition-colors font-semibold">
                 Cancel

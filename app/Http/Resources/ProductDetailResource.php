@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources;
 
-use App\Support\RemoteImage;
+use App\Support\ProductImageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,7 +10,11 @@ class ProductDetailResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $displayImageUrl = RemoteImage::proxiedUrl($this->image_url);
+        $galleryImages = $this->galleryPaths()
+            ->map(fn (string $path) => ProductImageUrl::fromStoredPath($path))
+            ->filter()
+            ->values()
+            ->all();
 
         return [
             'id' => $this->id,
@@ -19,8 +23,8 @@ class ProductDetailResource extends JsonResource
             'category' => $this->category?->name,
             'category_slug' => $this->category?->parent?->slug ?? $this->category?->slug,
             'description' => $this->description,
-            'images' => array_values(array_filter([$displayImageUrl])),
-            'image_source_url' => $this->image_url,
+            'images' => $galleryImages,
+            'image_source_url' => $this->source_image_url ?? $this->image_url,
             'moq' => $this->moq,
             'lead_time' => $this->formatted_lead_time,
             'in_stock' => $this->stock_quantity > 0,

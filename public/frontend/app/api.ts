@@ -119,6 +119,15 @@ export interface AdminProductPayload {
   name: string;
   description: string;
   image_url?: string;
+  import_source?: {
+    platform: string;
+    num_iid: string;
+    detail_url?: string | null;
+    image_url?: string | null;
+    description?: string | null;
+    description_html?: string | null;
+    images?: string[];
+  };
   moq: number;
   lead_time_min_days: number;
   lead_time_max_days: number;
@@ -138,8 +147,12 @@ export interface ImportedMarketplaceProduct {
   title: string;
   original_price: string | null;
   detail_url: string | null;
+  description: string;
+  description_html?: string | null;
   image_url: string | null;
   display_image_url?: string | null;
+  images: string[];
+  display_images?: string[];
   platform: string;
   num_iid: string;
 }

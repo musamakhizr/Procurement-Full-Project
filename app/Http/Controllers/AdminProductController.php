@@ -8,10 +8,17 @@ use App\Http\Resources\ProductDetailResource;
 use App\Http\Resources\ProductListResource;
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\ProductImportImageService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminProductController extends Controller
 {
+    public function __construct(
+        private readonly ProductImportImageService $productImportImageService,
+    ) {
+    }
+
     public function stats()
     {
         return response()->json([
@@ -25,7 +32,7 @@ class AdminProductController extends Controller
     public function index(Request $request)
     {
         $products = Product::query()
-            ->with(['category.parent', 'priceTiers'])
+            ->with(['category.parent', 'priceTiers', 'productImages'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->string('search')->toString();
 
@@ -44,24 +51,36 @@ class AdminProductController extends Controller
 
     public function store(StoreProductRequest $request)
     {
-        $product = Product::query()->create([
-            'category_id' => $request->integer('category_id'),
-            'sku' => $request->string('sku')->toString(),
-            'name' => $request->string('name')->toString(),
-            'description' => $request->string('description')->toString(),
-            'image_url' => $request->input('image_url'),
-            'moq' => $request->integer('moq'),
-            'lead_time_min_days' => $request->integer('lead_time_min_days'),
-            'lead_time_max_days' => $request->integer('lead_time_max_days'),
-            'stock_quantity' => $request->integer('stock_quantity'),
-            'is_verified' => $request->boolean('is_verified'),
-            'is_customizable' => $request->boolean('is_customizable'),
-            'is_active' => $request->boolean('is_active', true),
-            'base_price' => $request->input('base_price'),
-        ]);
+        $product = DB::transaction(function () use ($request) {
+            $importSource = $request->input('import_source');
 
-        $this->syncPriceTiers($product, $request->input('price_tiers', []));
-        $product->load(['category.parent', 'priceTiers']);
+            $product = Product::query()->create([
+                'category_id' => $request->integer('category_id'),
+                'sku' => $request->string('sku')->toString(),
+                'name' => $request->string('name')->toString(),
+                'description' => $request->string('description')->toString(),
+                'image_url' => $request->input('image_url'),
+                'source_platform' => data_get($importSource, 'platform'),
+                'source_product_id' => data_get($importSource, 'num_iid'),
+                'source_url' => data_get($importSource, 'detail_url'),
+                'source_image_url' => data_get($importSource, 'image_url'),
+                'moq' => $request->integer('moq'),
+                'lead_time_min_days' => $request->integer('lead_time_min_days'),
+                'lead_time_max_days' => $request->integer('lead_time_max_days'),
+                'stock_quantity' => $request->integer('stock_quantity'),
+                'is_verified' => $request->boolean('is_verified'),
+                'is_customizable' => $request->boolean('is_customizable'),
+                'is_active' => $request->boolean('is_active', true),
+                'base_price' => $request->input('base_price'),
+            ]);
+
+            $this->syncPriceTiers($product, $request->input('price_tiers', []));
+            $this->syncImportedImages($product, $importSource);
+
+            return $product;
+        });
+
+        $product->load(['category.parent', 'priceTiers', 'productImages']);
 
         return (new ProductDetailResource($product))
             ->response()
@@ -70,13 +89,28 @@ class AdminProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product)
     {
-        $product->update($request->safe()->except('price_tiers'));
+        DB::transaction(function () use ($request, $product) {
+            $product->update($request->safe()->except(['price_tiers', 'import_source']));
 
-        if ($request->has('price_tiers')) {
-            $this->syncPriceTiers($product, $request->input('price_tiers', []));
-        }
+            if ($request->has('import_source')) {
+                $importSource = $request->input('import_source');
 
-        $product->load(['category.parent', 'priceTiers']);
+                $product->forceFill([
+                    'source_platform' => data_get($importSource, 'platform'),
+                    'source_product_id' => data_get($importSource, 'num_iid'),
+                    'source_url' => data_get($importSource, 'detail_url'),
+                    'source_image_url' => data_get($importSource, 'image_url'),
+                ])->save();
+
+                $this->syncImportedImages($product, $importSource);
+            }
+
+            if ($request->has('price_tiers')) {
+                $this->syncPriceTiers($product, $request->input('price_tiers', []));
+            }
+        });
+
+        $product->load(['category.parent', 'priceTiers', 'productImages']);
 
         return new ProductDetailResource($product);
     }
@@ -101,5 +135,16 @@ class AdminProductController extends Controller
                 'price' => $tier['price'],
             ]);
         }
+    }
+
+    private function syncImportedImages(Product $product, mixed $importSource): void
+    {
+        $imageUrls = data_get($importSource, 'images', []);
+
+        if (! is_array($imageUrls) || $imageUrls === []) {
+            return;
+        }
+
+        $this->productImportImageService->syncProductImages($product, $imageUrls);
     }
 }

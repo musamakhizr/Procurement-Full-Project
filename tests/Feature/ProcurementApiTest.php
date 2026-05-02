@@ -66,12 +66,12 @@ class ProcurementApiTest extends TestCase
                 'quantity' => 5,
             ])
             ->assertCreated()
-            ->assertJsonPath('data.product_id', $product->id)
-            ->assertJsonPath('data.quantity', 5);
+            ->assertJsonPath('product_id', $product->id)
+            ->assertJsonPath('quantity', 5);
 
         $this->withToken($token)
             ->getJson('/api/procurement-list')
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1);
     }
 }
