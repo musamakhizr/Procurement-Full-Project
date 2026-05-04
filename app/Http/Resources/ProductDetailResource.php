@@ -15,6 +15,11 @@ class ProductDetailResource extends JsonResource
             ->filter()
             ->values()
             ->all();
+        $descriptionImages = $this->descriptionImagePaths()
+            ->map(fn (string $path) => ProductImageUrl::fromStoredPath($path))
+            ->filter()
+            ->values()
+            ->all();
 
         return [
             'id' => $this->id,
@@ -24,6 +29,7 @@ class ProductDetailResource extends JsonResource
             'category_slug' => $this->category?->parent?->slug ?? $this->category?->slug,
             'description' => $this->description,
             'images' => $galleryImages,
+            'description_images' => $descriptionImages,
             'image_source_url' => $this->source_image_url ?? $this->image_url,
             'moq' => $this->moq,
             'lead_time' => $this->formatted_lead_time,

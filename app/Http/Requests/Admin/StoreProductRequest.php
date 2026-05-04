@@ -28,6 +28,8 @@ class StoreProductRequest extends FormRequest
             'import_source.description_html' => ['nullable', 'string'],
             'import_source.images' => ['nullable', 'array'],
             'import_source.images.*' => ['url'],
+            'import_source.description_images' => ['nullable', 'array'],
+            'import_source.description_images.*' => ['url'],
             'moq' => ['required', 'integer', 'min:1'],
             'lead_time_min_days' => ['required', 'integer', 'min:1'],
             'lead_time_max_days' => ['required', 'integer', 'gte:lead_time_min_days'],

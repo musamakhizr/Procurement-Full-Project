@@ -31,6 +31,8 @@ class UpdateProductRequest extends FormRequest
             'import_source.description_html' => ['nullable', 'string'],
             'import_source.images' => ['nullable', 'array'],
             'import_source.images.*' => ['url'],
+            'import_source.description_images' => ['nullable', 'array'],
+            'import_source.description_images.*' => ['url'],
             'moq' => ['sometimes', 'integer', 'min:1'],
             'lead_time_min_days' => ['sometimes', 'integer', 'min:1'],
             'lead_time_max_days' => ['sometimes', 'integer', 'gte:lead_time_min_days'],

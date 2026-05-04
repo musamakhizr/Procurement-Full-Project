@@ -60,6 +60,7 @@ class RemoteImageApiTest extends TestCase
         $this->getJson("/api/products/{$product->id}")
             ->assertOk()
             ->assertJsonPath('image_source_url', 'https://cbu01.alicdn.com/img/ibank/example.jpg')
+            ->assertJsonPath('description_images', [])
             ->assertJsonPath('images.0', URL::signedRoute('remote-images.show', [
                 'url' => 'https://cbu01.alicdn.com/img/ibank/example.jpg',
             ]));

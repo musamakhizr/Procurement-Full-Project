@@ -86,12 +86,29 @@ class Product extends Model
     {
         if ($this->relationLoaded('productImages') && $this->productImages->isNotEmpty()) {
             return $this->productImages
+                ->where('section', 'gallery')
                 ->pluck('path')
                 ->filter(fn ($path) => is_string($path) && $path !== '')
                 ->values();
         }
 
         return collect([$this->image_url])
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    public function descriptionImagePaths(): Collection
+    {
+        if (! $this->relationLoaded('productImages') || $this->productImages->isEmpty()) {
+            return collect();
+        }
+
+        return $this->productImages
+            ->where('section', 'description')
+            ->pluck('path')
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values();
     }

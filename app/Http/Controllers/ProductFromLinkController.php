@@ -136,8 +136,9 @@ class ProductFromLinkController extends Controller
             ?? $item['url']
             ?? $fallbackLink;
 
-        $images = $this->extractImageUrls($item);
-        $imageUrl = $images[0] ?? null;
+        $galleryImages = $this->extractGalleryImageUrls($item);
+        $descriptionImages = $this->extractDescriptionImageUrls($item);
+        $imageUrl = $galleryImages[0] ?? null;
         $detailUrl = $this->normalizeUrl($detailUrl);
         $descriptionHtml = $this->normalizeDescriptionHtml($item['desc'] ?? null);
         $description = $this->buildDescription($item);
@@ -150,8 +151,10 @@ class ProductFromLinkController extends Controller
             'description_html' => $descriptionHtml,
             'image_url' => $imageUrl,
             'display_image_url' => RemoteImage::proxiedUrl($imageUrl),
-            'images' => $images,
-            'display_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $images),
+            'images' => $galleryImages,
+            'display_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $galleryImages),
+            'description_images' => $descriptionImages,
+            'display_description_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $descriptionImages),
             'platform' => $platform,
             'num_iid' => $numIid,
         ];
@@ -160,7 +163,7 @@ class ProductFromLinkController extends Controller
     /**
      * @return array<int, string>
      */
-    private function extractImageUrls(array $item): array
+    private function extractGalleryImageUrls(array $item): array
     {
         $candidates = [
             $item['pic_url'] ?? null,
@@ -169,11 +172,31 @@ class ProductFromLinkController extends Controller
             $item['img'] ?? null,
             ...$this->extractArrayImageUrls($item['images'] ?? []),
             ...$this->extractArrayImageUrls($item['item_imgs'] ?? []),
-            ...$this->extractArrayImageUrls($item['desc_img'] ?? []),
             ...$this->extractPropsImageUrls($item['props_img'] ?? []),
+        ];
+
+        return $this->normalizeExtractedUrls($candidates);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractDescriptionImageUrls(array $item): array
+    {
+        $candidates = [
+            ...$this->extractArrayImageUrls($item['desc_img'] ?? []),
             ...$this->extractDescriptionHtmlImageUrls($item['desc'] ?? null),
         ];
 
+        return $this->normalizeExtractedUrls($candidates);
+    }
+
+    /**
+     * @param  array<int, mixed>  $candidates
+     * @return array<int, string>
+     */
+    private function normalizeExtractedUrls(array $candidates): array
+    {
         return collect($candidates)
             ->map(fn ($url) => is_string($url) ? $this->normalizeUrl($url) : null)
             ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))

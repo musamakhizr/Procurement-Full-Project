@@ -140,11 +140,16 @@ class AdminProductController extends Controller
     private function syncImportedImages(Product $product, mixed $importSource): void
     {
         $imageUrls = data_get($importSource, 'images', []);
+        $descriptionImageUrls = data_get($importSource, 'description_images', []);
 
-        if (! is_array($imageUrls) || $imageUrls === []) {
+        if ((! is_array($imageUrls) || $imageUrls === []) && (! is_array($descriptionImageUrls) || $descriptionImageUrls === [])) {
             return;
         }
 
-        $this->productImportImageService->syncProductImages($product, $imageUrls);
+        $this->productImportImageService->syncProductImages(
+            $product,
+            is_array($imageUrls) ? $imageUrls : [],
+            is_array($descriptionImageUrls) ? $descriptionImageUrls : [],
+        );
     }
 }

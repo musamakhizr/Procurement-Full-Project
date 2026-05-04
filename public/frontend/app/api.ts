@@ -48,6 +48,7 @@ export interface ProductDetail {
   category_slug: string;
   description: string;
   images: string[];
+  description_images: string[];
   image_source_url?: string | null;
   moq: number;
   lead_time: string;
@@ -153,6 +154,8 @@ export interface ImportedMarketplaceProduct {
   display_image_url?: string | null;
   images: string[];
   display_images?: string[];
+  description_images?: string[];
+  display_description_images?: string[];
   platform: string;
   num_iid: string;
 }

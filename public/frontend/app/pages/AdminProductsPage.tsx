@@ -101,6 +101,7 @@ export function AdminProductsPage() {
         description: importedProduct.description,
         description_html: importedProduct.description_html,
         images: importedProduct.images,
+        description_images: importedProduct.description_images,
       },
     } : {}),
     moq: Number(form.moq),

@@ -13,40 +13,59 @@ use RuntimeException;
 class ProductImportImageService
 {
     /**
-     * @param  array<int, string>  $sourceUrls
+     * @param  array<int, string>  $galleryUrls
+     * @param  array<int, string>  $descriptionUrls
      */
-    public function syncProductImages(Product $product, array $sourceUrls): void
+    public function syncProductImages(Product $product, array $galleryUrls, array $descriptionUrls = []): void
     {
-        $normalizedUrls = collect($sourceUrls)
-            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))
-            ->map(fn (string $url) => trim($url))
-            ->unique()
-            ->values();
+        $normalizedGalleryUrls = $this->normalizeUrls($galleryUrls);
+        $normalizedDescriptionUrls = $this->normalizeUrls($descriptionUrls);
 
-        if ($normalizedUrls->isEmpty()) {
+        if ($normalizedGalleryUrls->isEmpty() && $normalizedDescriptionUrls->isEmpty()) {
             return;
         }
 
-        $downloadedImages = $normalizedUrls
-            ->map(fn (string $url, int $index) => $this->downloadImage($product, $url, $index))
+        $downloadedGalleryImages = $normalizedGalleryUrls
+            ->map(fn (string $url, int $index) => $this->downloadImage($product, $url, $index, 'gallery'))
             ->filter()
             ->values();
 
-        if ($downloadedImages->isEmpty()) {
+        $downloadedDescriptionImages = $normalizedDescriptionUrls
+            ->map(fn (string $url, int $index) => $this->downloadImage($product, $url, $index, 'description'))
+            ->filter()
+            ->values();
+
+        if ($downloadedGalleryImages->isEmpty() && $downloadedDescriptionImages->isEmpty()) {
             throw new RuntimeException('Unable to download product images from the source marketplace.');
         }
 
         $this->deleteExistingImages($product);
 
         $product->productImages()->delete();
-        $product->productImages()->createMany($downloadedImages->all());
+        $product->productImages()->createMany([
+            ...$downloadedGalleryImages->all(),
+            ...$downloadedDescriptionImages->all(),
+        ]);
 
-        $primaryImage = $downloadedImages->first();
+        $primaryImage = $downloadedGalleryImages->first() ?? $downloadedDescriptionImages->first();
 
         $product->forceFill([
             'image_url' => $primaryImage['path'],
             'source_image_url' => $primaryImage['source_url'],
         ])->save();
+    }
+
+    /**
+     * @param  array<int, string>  $urls
+     * @return Collection<int, string>
+     */
+    private function normalizeUrls(array $urls): Collection
+    {
+        return collect($urls)
+            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))
+            ->map(fn (string $url) => trim($url))
+            ->unique()
+            ->values();
     }
 
     private function deleteExistingImages(Product $product): void
@@ -62,7 +81,7 @@ class ProductImportImageService
         }
     }
 
-    private function downloadImage(Product $product, string $url, int $index): ?array
+    private function downloadImage(Product $product, string $url, int $index, string $section): ?array
     {
         $response = Http::withHeaders(RemoteImage::requestHeaders($url))
             ->timeout(30)
@@ -81,7 +100,7 @@ class ProductImportImageService
         }
 
         $extension = $this->resolveExtension($contentType, $url);
-        $directory = 'products/'.$product->getKey();
+        $directory = 'products/'.$product->getKey().'/'.$section;
         $filename = sprintf('%02d-%s.%s', $index + 1, Str::random(12), $extension);
         $path = $directory.'/'.$filename;
 
@@ -90,8 +109,9 @@ class ProductImportImageService
         return [
             'path' => $path,
             'source_url' => $url,
+            'section' => $section,
             'sort_order' => $index,
-            'is_primary' => $index === 0,
+            'is_primary' => $section === 'gallery' && $index === 0,
         ];
     }
 

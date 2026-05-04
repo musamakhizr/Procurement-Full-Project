@@ -14,6 +14,7 @@ class ProductImage extends Model
         'product_id',
         'path',
         'source_url',
+        'section',
         'sort_order',
         'is_primary',
     ];

@@ -187,9 +187,24 @@ export function ProductDetailPage() {
 
         <div className="bg-white rounded-2xl border-2 border-slate-200 p-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 mb-4">{t('product.description')}</h2>
-              <p className="text-slate-700 leading-relaxed">{product.description}</p>
+            <div className="space-y-8">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 mb-4">{t('product.description')}</h2>
+                <p className="whitespace-pre-line text-slate-700 leading-relaxed">{product.description}</p>
+              </div>
+
+              {product.description_images.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-4">Product Detail Images</h3>
+                  <div className="space-y-4">
+                    {product.description_images.map((image, index) => (
+                      <div key={`${image}-${index}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                        <img src={image} alt={`${product.name} detail ${index + 1}`} className="w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

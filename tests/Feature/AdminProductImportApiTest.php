@@ -43,9 +43,10 @@ class AdminProductImportApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('product.title', 'Imported Plush Toy')
             ->assertJsonPath('product.detail_url', 'https://detail.1688.com/offer/1032188551822.html')
-            ->assertJsonCount(3, 'product.images')
+            ->assertJsonCount(2, 'product.images')
+            ->assertJsonCount(1, 'product.description_images')
             ->assertJsonPath('product.images.0', 'https://cbu01.alicdn.com/img/ibank/main.jpg')
-            ->assertJsonPath('product.images.2', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg');
+            ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg');
     }
 
     public function test_admin_can_create_imported_product_and_store_images_locally(): void
@@ -94,6 +95,8 @@ class AdminProductImportApiTest extends TestCase
                 'images' => [
                     'https://cdn.example.com/main.jpg',
                     'https://cdn.example.com/gallery-1.jpg',
+                ],
+                'description_images' => [
                     'https://cdn.example.com/desc-1.jpg',
                 ],
             ],
@@ -103,11 +106,14 @@ class AdminProductImportApiTest extends TestCase
 
         $response
             ->assertCreated()
-            ->assertJsonCount(3, 'images');
+            ->assertJsonCount(2, 'images')
+            ->assertJsonCount(1, 'description_images');
 
         $this->assertSame('1688', $product->source_platform);
         $this->assertSame('1032188551822', $product->source_product_id);
         $this->assertCount(3, $product->productImages);
+        $this->assertCount(2, $product->productImages->where('section', 'gallery'));
+        $this->assertCount(1, $product->productImages->where('section', 'description'));
 
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
