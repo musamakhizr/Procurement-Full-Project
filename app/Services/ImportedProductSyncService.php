@@ -34,7 +34,7 @@ class ImportedProductSyncService
             return;
         }
 
-        ProcessImportedProductMedia::dispatch($product->getKey())->afterResponse();
+        ProcessImportedProductMedia::dispatch($product->getKey());
     }
 
     public function process(Product $product): void
@@ -79,6 +79,7 @@ class ImportedProductSyncService
 
             $product->forceFill([
                 'source_image_url' => $mainImageUrl ?? $product->source_image_url,
+                'cat_from_api' => $processedMedia['category'] ?? $product->cat_from_api,
                 'import_status' => 'completed',
                 'import_error' => null,
             ])->save();

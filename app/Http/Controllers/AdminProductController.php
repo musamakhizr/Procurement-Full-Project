@@ -65,6 +65,7 @@ class AdminProductController extends Controller
                 'source_url' => data_get($importSource, 'detail_url'),
                 'source_image_url' => data_get($importSource, 'image_url'),
                 'source_category_label' => data_get($importSource, 'classified_category'),
+                'cat_from_api' => null,
                 'import_status' => is_array($importSource) ? 'pending' : null,
                 'moq' => $request->integer('moq'),
                 'lead_time_min_days' => $request->integer('lead_time_min_days'),
@@ -105,6 +106,7 @@ class AdminProductController extends Controller
                     'source_url' => data_get($importSource, 'detail_url'),
                     'source_image_url' => data_get($importSource, 'image_url'),
                     'source_category_label' => data_get($importSource, 'classified_category'),
+                    'cat_from_api' => null,
                     'import_status' => 'pending',
                     'import_error' => null,
                 ])->save();

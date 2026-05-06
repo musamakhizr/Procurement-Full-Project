@@ -17,6 +17,10 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/sign-in" replace />;
   }
 
+  if (adminOnly && !user) {
+    return <div className="min-h-screen bg-[#F8FAFC] pt-24 px-6 text-slate-600">Loading...</div>;
+  }
+
   if (adminOnly && !user?.is_admin) {
     return <Navigate to="/dashboard" replace />;
   }

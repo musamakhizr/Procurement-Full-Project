@@ -24,6 +24,7 @@ class Product extends Model
         'source_url',
         'source_image_url',
         'source_category_label',
+        'cat_from_api',
         'import_status',
         'import_error',
         'source_payload',

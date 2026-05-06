@@ -88,10 +88,11 @@ class FogotProductMediaService
      */
     private function processMainImage(string $imageUrl): ?array
     {
+        $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
+
         $json = $this->postJson('/image/redraw', [
             'image_url' => $imageUrl,
-            'image_base64' => 'string',
-            'mime_type' => 'image/jpeg',
+            'mime_type' => $mimeType,
         ]);
 
         $image = $this->extractFirstImagePayload($json, $imageUrl);
@@ -105,29 +106,41 @@ class FogotProductMediaService
      */
     private function processDetailImages(array $imageUrls): array
     {
-        return collect($imageUrls)
-            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))
-            ->values()
-            ->flatMap(function (string $imageUrl) {
+        $processedImages = [];
+
+        foreach ($imageUrls as $imageUrl) {
+            if (! is_string($imageUrl) || ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                continue;
+            }
+
+            try {
+                $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
                 $json = $this->postJson('/detail/image/translate', [
                     'image_url' => $imageUrl,
-                    'image_base64' => 'string',
-                    'mime_type' => 'image/jpeg',
+                    'mime_type' => $mimeType,
                 ]);
 
-                return collect($this->extractImagePayloads($json))
-                    ->map(fn (array $image) => $this->formatImagePayload($imageUrl, $image['mime_type'], $image['data']))
-                    ->all();
-            })
-            ->values()
-            ->all();
+                foreach ($this->extractImagePayloads($json) as $image) {
+                    $processedImages[] = $this->formatImagePayload($imageUrl, $image['mime_type'], $image['data']);
+                }
+            } catch (Throwable $exception) {
+                $this->logPreviewWarning('Fogot detail image translation failed for a single image.', [
+                    'image_url' => $imageUrl,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return array_values($processedImages);
     }
 
     private function classifyCategory(string $imageUrl): ?string
     {
+        $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
+
         $json = $this->postJson('/detail/image/classify', [
             'image_url' => $imageUrl,
-            'mime_type' => 'image/jpeg',
+            'mime_type' => $mimeType,
         ]);
 
         $category = data_get($json, 'category')

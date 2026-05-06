@@ -28,6 +28,7 @@ export interface ProductSummary {
   subcategory_slug: string | null;
   image: string | null;
   image_source_url?: string | null;
+  cat_from_api?: string | null;
   moq: number;
   lead_time: string;
   verified: boolean;
@@ -50,6 +51,7 @@ export interface ProductDetail {
   images: string[];
   description_images: string[];
   image_source_url?: string | null;
+  cat_from_api?: string | null;
   import_status?: string | null;
   base_price: number;
   moq: number;

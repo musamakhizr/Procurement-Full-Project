@@ -16,9 +16,15 @@ const EMPTY_FORM = {
   imageUrl: '',
 };
 
+type SaveNotice = {
+  tone: 'info' | 'success' | 'error';
+  message: string;
+};
+
 export function AdminProductsPage() {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
+  const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -235,13 +241,45 @@ export function AdminProductsPage() {
   const handleCreateProduct = async () => {
     setIsSubmitting(true);
     setFormError('');
+    const savedProductName = form.name.trim() || importedProduct?.title || 'Product';
+    const isImportedSave = importedProduct !== null;
+    const payload = buildProductPayload('create');
+    const draftForm = { ...form };
+    const draftImportedProduct = importedProduct;
+    const draftProductLink = productLink;
+    const draftPreviewProduct = previewProduct;
+
+    closeModal();
+    setSaveNotice({
+      tone: 'info',
+      message: isImportedSave
+        ? `${savedProductName} is being created. Image processing and category detection will continue in the background.`
+        : `${savedProductName} is being created.`,
+    });
 
     try {
-      await createAdminProduct(buildProductPayload('create'));
-      closeModal();
+      await createAdminProduct(payload);
+      setSaveNotice(
+        {
+          tone: 'success',
+          message: isImportedSave
+            ? `${savedProductName} was saved. Main image, gallery images, description images, and category detection are processing in the background.`
+            : `${savedProductName} was saved successfully.`,
+        },
+      );
       await loadAdminData(currentPage, searchQuery);
     } catch (error: any) {
+      setShowAddModal(true);
+      setEditingProductId(null);
+      setForm(draftForm);
+      setImportedProduct(draftImportedProduct);
+      setProductLink(draftProductLink);
+      setPreviewProduct(draftPreviewProduct);
       setFormError(error?.response?.data?.message ?? 'Unable to create product.');
+      setSaveNotice({
+        tone: 'error',
+        message: error?.response?.data?.message ?? `Unable to create ${savedProductName}.`,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -337,13 +375,46 @@ export function AdminProductsPage() {
 
     setIsSubmitting(true);
     setFormError('');
+    const savedProductName = form.name.trim() || importedProduct?.title || 'Product';
+    const isImportedSave = importedProduct !== null;
+    const payload = buildProductPayload('update');
+    const draftForm = { ...form };
+    const draftImportedProduct = importedProduct;
+    const draftProductLink = productLink;
+    const draftPreviewProduct = previewProduct;
+    const draftEditingProductId = editingProductId;
+
+    closeModal();
+    setSaveNotice({
+      tone: 'info',
+      message: isImportedSave
+        ? `${savedProductName} is being updated. Image processing and category detection will continue in the background.`
+        : `${savedProductName} is being updated.`,
+    });
 
     try {
-      await updateAdminProduct(editingProductId, buildProductPayload('update'));
-      closeModal();
+      await updateAdminProduct(editingProductId, payload);
+      setSaveNotice(
+        {
+          tone: 'success',
+          message: isImportedSave
+            ? `${savedProductName} was updated. Main image, gallery images, description images, and category detection are processing in the background.`
+            : `${savedProductName} was updated successfully.`,
+        },
+      );
       await loadAdminData(currentPage, searchQuery);
     } catch (error: any) {
+      setShowAddModal(true);
+      setEditingProductId(draftEditingProductId);
+      setForm(draftForm);
+      setImportedProduct(draftImportedProduct);
+      setProductLink(draftProductLink);
+      setPreviewProduct(draftPreviewProduct);
       setFormError(error?.response?.data?.message ?? 'Unable to update product.');
+      setSaveNotice({
+        tone: 'error',
+        message: error?.response?.data?.message ?? `Unable to update ${savedProductName}.`,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -367,6 +438,45 @@ export function AdminProductsPage() {
           <div className="flex items-center gap-3 mb-3"><Package className="w-8 h-8 text-[#7C3AED]" /><h1 className="text-4xl font-bold text-slate-900">{t('admin.productManagement')}</h1></div>
           <p className="text-slate-600 text-lg">{t('admin.productManagementDesc')}</p>
         </div>
+
+        {saveNotice && (
+          <div className={`mb-6 flex items-start justify-between gap-4 rounded-2xl px-5 py-4 ${
+            saveNotice.tone === 'error'
+              ? 'border border-red-200 bg-red-50'
+              : saveNotice.tone === 'success'
+                ? 'border border-emerald-200 bg-emerald-50'
+                : 'border border-blue-200 bg-blue-50'
+          }`}>
+            <div className="flex items-start gap-3">
+              <AlertCircle className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
+                saveNotice.tone === 'error'
+                  ? 'text-red-600'
+                  : saveNotice.tone === 'success'
+                    ? 'text-emerald-600'
+                    : 'text-blue-600'
+              }`} />
+              <p className={`text-sm font-medium ${
+                saveNotice.tone === 'error'
+                  ? 'text-red-900'
+                  : saveNotice.tone === 'success'
+                    ? 'text-emerald-900'
+                    : 'text-blue-900'
+              }`}>{saveNotice.message}</p>
+            </div>
+            <button
+              onClick={() => setSaveNotice(null)}
+              className={`rounded-lg px-2 py-1 text-sm font-semibold transition-colors ${
+                saveNotice.tone === 'error'
+                  ? 'text-red-700 hover:bg-red-100'
+                  : saveNotice.tone === 'success'
+                    ? 'text-emerald-700 hover:bg-emerald-100'
+                    : 'text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-2xl border-2 border-slate-200 p-6"><div className="flex items-center justify-between mb-2"><span className="text-slate-600 font-medium">{t('admin.totalProducts')}</span><Package className="w-5 h-5 text-[#4F6BFF]" /></div><div className="text-3xl font-bold text-slate-900">{stats.total_products}</div><div className="text-sm text-emerald-600 font-semibold mt-1">Live catalog</div></div>

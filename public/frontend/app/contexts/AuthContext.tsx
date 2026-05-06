@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import axios from 'axios';
 import {
   clearToken,
   fetchCurrentUser,
@@ -19,19 +20,34 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_TOKEN_KEY = 'auth_token';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasToken, setHasToken] = useState(() => Boolean(localStorage.getItem(AUTH_TOKEN_KEY)));
 
   useEffect(() => {
     const initializeSession = async () => {
+      const token = localStorage.getItem(AUTH_TOKEN_KEY);
+
+      if (!token) {
+        setHasToken(false);
+        setIsLoading(false);
+        return;
+      }
+
+      setHasToken(true);
+
       try {
         const currentUser = await fetchCurrentUser();
         setUser(currentUser);
       } catch (error) {
-        clearToken();
-        setUser(null);
+        if (axios.isAxiosError(error) && error.response && [401, 403, 419].includes(error.response.status)) {
+          clearToken();
+          setHasToken(false);
+          setUser(null);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -43,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const response = await signInRequest({ email, password });
     persistToken(response.token);
+    setHasToken(true);
     setUser(response.user);
   };
 
@@ -61,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization_type: organizationType,
     });
     persistToken(response.token);
+    setHasToken(true);
     setUser(response.user);
   };
 
@@ -72,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     clearToken();
+    setHasToken(false);
     setUser(null);
   };
 
@@ -79,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        isAuthenticated: hasToken,
         isLoading,
         signIn,
         signUp,
