@@ -12,6 +12,12 @@ class ProcessImportedProductMedia implements ShouldQueue
 {
     use Dispatchable, Queueable;
 
+    public int $timeout = 1800;
+
+    public int $tries = 1;
+
+    public bool $failOnTimeout = true;
+
     public function __construct(
         public readonly int $productId,
     ) {

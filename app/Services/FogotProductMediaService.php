@@ -155,10 +155,15 @@ class FogotProductMediaService
      */
     private function postJson(string $path, array $payload): array
     {
+        $timeout = max((int) config('services.fogot.timeout', 30), 5);
+        $connectTimeout = max((int) config('services.fogot.connect_timeout', 10), 3);
+        $retryTimes = max((int) config('services.fogot.retry_times', 0), 0);
+        $retrySleepMs = max((int) config('services.fogot.retry_sleep_ms', 500), 0);
+
         $response = Http::acceptJson()
-            ->timeout(90)
-            ->connectTimeout(20)
-            ->retry(1, 500)
+            ->timeout($timeout)
+            ->connectTimeout($connectTimeout)
+            ->retry($retryTimes, $retrySleepMs)
             ->post(rtrim((string) config('services.fogot.base_url'), '/').$path, $payload);
 
         if ($response->failed()) {

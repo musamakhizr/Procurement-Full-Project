@@ -37,6 +37,10 @@ return [
 
     'fogot' => [
         'base_url' => env('FOGOT_API_BASE_URL', 'https://py.fogot.cn/api/product'),
+        'timeout' => (int) env('FOGOT_API_TIMEOUT', 30),
+        'connect_timeout' => (int) env('FOGOT_API_CONNECT_TIMEOUT', 10),
+        'retry_times' => (int) env('FOGOT_API_RETRY_TIMES', 0),
+        'retry_sleep_ms' => (int) env('FOGOT_API_RETRY_SLEEP_MS', 500),
     ],
 
 ];
