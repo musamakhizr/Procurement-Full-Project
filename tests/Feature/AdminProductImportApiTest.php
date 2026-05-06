@@ -43,20 +43,44 @@ class AdminProductImportApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('product.title', 'Imported Plush Toy')
             ->assertJsonPath('product.detail_url', 'https://detail.1688.com/offer/1032188551822.html')
-            ->assertJsonCount(2, 'product.images')
+            ->assertJsonPath('product.main_image_url', 'https://cbu01.alicdn.com/img/ibank/main.jpg')
+            ->assertJsonPath('product.classified_category', null)
+            ->assertJsonCount(1, 'product.images')
+            ->assertJsonCount(0, 'product.processed_gallery_images')
             ->assertJsonCount(1, 'product.description_images')
-            ->assertJsonPath('product.images.0', 'https://cbu01.alicdn.com/img/ibank/main.jpg')
-            ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg');
+            ->assertJsonCount(0, 'product.processed_description_images')
+            ->assertJsonPath('product.images.0', 'https://cbu01.alicdn.com/img/ibank/gallery-1.jpg')
+            ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg')
+            ->assertJsonPath('product.processed_main_image', null);
     }
 
-    public function test_admin_can_create_imported_product_and_store_images_locally(): void
+    public function test_admin_can_create_imported_product_and_store_processed_images_locally(): void
     {
         Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
 
         Http::fake([
-            'https://cdn.example.com/*' => Http::response('fake-image-binary', 200, [
-                'Content-Type' => 'image/jpeg',
-            ]),
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+                'body' => [
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode('processed-main-image'),
+                        ],
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('processed-gallery-image'),
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => 'Imported Toys',
+            ], 200),
         ]);
 
         $admin = User::factory()->create(['role' => 'admin']);
@@ -90,14 +114,34 @@ class AdminProductImportApiTest extends TestCase
                 'num_iid' => '1032188551822',
                 'detail_url' => 'https://detail.1688.com/offer/1032188551822.html',
                 'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'classified_category' => 'Imported Toys',
                 'description' => 'Imported description',
                 'description_html' => '<p>Imported description</p>',
                 'images' => [
-                    'https://cdn.example.com/main.jpg',
                     'https://cdn.example.com/gallery-1.jpg',
                 ],
                 'description_images' => [
                     'https://cdn.example.com/desc-1.jpg',
+                ],
+                'variants' => [
+                    [
+                        'sku_id' => 'sku-1',
+                        'properties_key' => '1627207:29995729228',
+                        'properties_name' => '1627207:29995729228:颜色分类:香芋紫-15升',
+                        'label' => '香芋紫-15升',
+                        'image_url' => 'https://cdn.example.com/gallery-1.jpg',
+                        'price' => 5.50,
+                        'original_price' => 5.50,
+                        'stock_quantity' => 100,
+                        'option_values' => [
+                            [
+                                'key' => '1627207:29995729228',
+                                'group_name' => '颜色分类',
+                                'value' => '香芋紫-15升',
+                            ],
+                        ],
+                    ],
                 ],
             ],
         ]);
@@ -111,9 +155,13 @@ class AdminProductImportApiTest extends TestCase
 
         $this->assertSame('1688', $product->source_platform);
         $this->assertSame('1032188551822', $product->source_product_id);
+        $this->assertSame('Imported Toys', $product->source_category_label);
+        $this->assertSame('completed', $product->import_status);
         $this->assertCount(3, $product->productImages);
         $this->assertCount(2, $product->productImages->where('section', 'gallery'));
         $this->assertCount(1, $product->productImages->where('section', 'description'));
+        $this->assertCount(1, $product->variants);
+        $this->assertSame('香芋紫-15升', $product->variants->first()->label);
 
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);

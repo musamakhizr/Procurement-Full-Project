@@ -70,7 +70,7 @@ export function SourcingRequestCard() {
                     </label>
                     <input
                       type="text"
-                      placeholder="$5,000"
+                      placeholder="¥5,000"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 placeholder:text-gray-400"
                     />
                   </div>

@@ -136,9 +136,10 @@ class ProductFromLinkController extends Controller
             ?? $item['url']
             ?? $fallbackLink;
 
-        $galleryImages = $this->extractGalleryImageUrls($item);
+        $mainImageUrl = $this->extractMainImageUrl($item);
+        $galleryImages = $this->extractGalleryImageUrls($item, $mainImageUrl);
         $descriptionImages = $this->extractDescriptionImageUrls($item);
-        $imageUrl = $galleryImages[0] ?? null;
+        $variants = $this->extractVariants($item);
         $detailUrl = $this->normalizeUrl($detailUrl);
         $descriptionHtml = $this->normalizeDescriptionHtml($item['desc'] ?? null);
         $description = $this->buildDescription($item);
@@ -149,12 +150,18 @@ class ProductFromLinkController extends Controller
             'detail_url' => $detailUrl,
             'description' => $description,
             'description_html' => $descriptionHtml,
-            'image_url' => $imageUrl,
-            'display_image_url' => RemoteImage::proxiedUrl($imageUrl),
+            'main_image_url' => $mainImageUrl,
+            'image_url' => $mainImageUrl,
+            'display_image_url' => RemoteImage::proxiedUrl($mainImageUrl),
             'images' => $galleryImages,
             'display_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $galleryImages),
             'description_images' => $descriptionImages,
             'display_description_images' => array_map(fn (string $url) => RemoteImage::proxiedUrl($url), $descriptionImages),
+            'processed_main_image' => null,
+            'processed_gallery_images' => [],
+            'processed_description_images' => [],
+            'classified_category' => null,
+            'variants' => $variants,
             'platform' => $platform,
             'num_iid' => $numIid,
         ];
@@ -163,19 +170,15 @@ class ProductFromLinkController extends Controller
     /**
      * @return array<int, string>
      */
-    private function extractGalleryImageUrls(array $item): array
+    private function extractGalleryImageUrls(array $item, ?string $mainImageUrl): array
     {
         $candidates = [
-            $item['pic_url'] ?? null,
-            $item['main_pic'] ?? null,
-            $item['image'] ?? null,
-            $item['img'] ?? null,
             ...$this->extractArrayImageUrls($item['images'] ?? []),
             ...$this->extractArrayImageUrls($item['item_imgs'] ?? []),
             ...$this->extractPropsImageUrls($item['props_img'] ?? []),
         ];
 
-        return $this->normalizeExtractedUrls($candidates);
+        return $this->normalizeExtractedUrls($candidates, [$mainImageUrl]);
     }
 
     /**
@@ -191,15 +194,35 @@ class ProductFromLinkController extends Controller
         return $this->normalizeExtractedUrls($candidates);
     }
 
+    private function extractMainImageUrl(array $item): ?string
+    {
+        $candidates = [
+            $item['pic_url'] ?? null,
+            $item['main_pic'] ?? null,
+            $item['image'] ?? null,
+            $item['img'] ?? null,
+            ...$this->extractArrayImageUrls($item['item_imgs'] ?? []),
+        ];
+
+        return $this->normalizeExtractedUrls($candidates)[0] ?? null;
+    }
+
     /**
      * @param  array<int, mixed>  $candidates
+     * @param  array<int, string|null>  $excludedUrls
      * @return array<int, string>
      */
-    private function normalizeExtractedUrls(array $candidates): array
+    private function normalizeExtractedUrls(array $candidates, array $excludedUrls = []): array
     {
+        $normalizedExcludedUrls = collect($excludedUrls)
+            ->map(fn ($url) => is_string($url) ? $this->normalizeUrl($url) : null)
+            ->filter()
+            ->values()
+            ->all();
+
         return collect($candidates)
             ->map(fn ($url) => is_string($url) ? $this->normalizeUrl($url) : null)
-            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL))
+            ->filter(fn ($url) => is_string($url) && filter_var($url, FILTER_VALIDATE_URL) && ! in_array($url, $normalizedExcludedUrls, true) && ! $this->shouldIgnoreImageUrl($url))
             ->unique()
             ->values()
             ->all();
@@ -261,6 +284,157 @@ class ProductFromLinkController extends Controller
     private function normalizeDescriptionHtml(?string $descriptionHtml): ?string
     {
         return blank($descriptionHtml) ? null : trim($descriptionHtml);
+    }
+
+    /**
+     * @return array<int, array{
+     *   sku_id:string,
+     *   properties_key:string|null,
+     *   properties_name:string|null,
+     *   label:string,
+     *   image_url:string|null,
+     *   price:float|null,
+     *   original_price:float|null,
+     *   stock_quantity:int,
+     *   option_values:array<int, array{key:string,group_name:string,value:string}>
+     * }>
+     */
+    private function extractVariants(array $item): array
+    {
+        $propertyImageMap = $this->extractPropertyImageMap($item);
+        $skus = data_get($item, 'skus.sku', []);
+
+        if (! is_array($skus)) {
+            return [];
+        }
+
+        return collect($skus)
+            ->map(function ($sku, int $index) use ($propertyImageMap, $item) {
+                if (! is_array($sku)) {
+                    return null;
+                }
+
+                $propertiesKey = filled($sku['properties'] ?? null) ? (string) $sku['properties'] : null;
+                $propertiesName = filled($sku['properties_name'] ?? null)
+                    ? (string) $sku['properties_name']
+                    : (is_string($propertiesKey) ? data_get($item, 'props_list.'.$propertiesKey) : null);
+                $optionValues = $this->parseVariantOptionValues($propertiesName);
+
+                if ($optionValues === []) {
+                    return null;
+                }
+
+                return [
+                    'sku_id' => (string) ($sku['sku_id'] ?? $index),
+                    'properties_key' => $propertiesKey,
+                    'properties_name' => $propertiesName,
+                    'label' => implode(' / ', array_column($optionValues, 'value')),
+                    'image_url' => $this->resolveVariantImageUrl($optionValues, $propertyImageMap),
+                    'price' => is_numeric($sku['price'] ?? null) ? (float) $sku['price'] : null,
+                    'original_price' => is_numeric($sku['orginal_price'] ?? $sku['original_price'] ?? null) ? (float) ($sku['orginal_price'] ?? $sku['original_price']) : null,
+                    'stock_quantity' => max((int) ($sku['quantity'] ?? 0), 0),
+                    'option_values' => $optionValues,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function extractPropertyImageMap(array $item): array
+    {
+        $map = [];
+
+        foreach ((array) ($item['props_img'] ?? []) as $key => $url) {
+            $normalizedUrl = is_string($url) ? $this->normalizeUrl($url) : null;
+
+            if (is_string($key) && $normalizedUrl && ! $this->shouldIgnoreImageUrl($normalizedUrl)) {
+                $map[$key] = $normalizedUrl;
+            }
+        }
+
+        foreach ((array) data_get($item, 'props_imgs.prop_img', []) as $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+
+            $properties = $image['properties'] ?? null;
+            $url = isset($image['url']) ? $this->normalizeUrl((string) $image['url']) : null;
+
+            if (is_string($properties) && $url && ! $this->shouldIgnoreImageUrl($url)) {
+                $map[$properties] = $url;
+            }
+        }
+
+        foreach ((array) data_get($item, 'prop_imgs.prop_img', []) as $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+
+            $properties = $image['properties'] ?? null;
+            $url = isset($image['url']) ? $this->normalizeUrl((string) $image['url']) : null;
+
+            if (is_string($properties) && $url && ! $this->shouldIgnoreImageUrl($url)) {
+                $map[$properties] = $url;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<int, array{key:string,group_name:string,value:string}>
+     */
+    private function parseVariantOptionValues(?string $propertiesName): array
+    {
+        if (! is_string($propertiesName) || trim($propertiesName) === '') {
+            return [];
+        }
+
+        return collect(explode(';', $propertiesName))
+            ->map(function (string $segment) {
+                $parts = array_map('trim', explode(':', $segment));
+
+                if (count($parts) < 4) {
+                    return null;
+                }
+
+                return [
+                    'key' => $parts[0].':'.$parts[1],
+                    'group_name' => $parts[2],
+                    'value' => implode(':', array_slice($parts, 3)),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array{key:string,group_name:string,value:string}>  $optionValues
+     * @param  array<string, string>  $propertyImageMap
+     */
+    private function resolveVariantImageUrl(array $optionValues, array $propertyImageMap): ?string
+    {
+        foreach ($optionValues as $optionValue) {
+            $url = $propertyImageMap[$optionValue['key']] ?? null;
+
+            if ($url !== null) {
+                return $url;
+            }
+        }
+
+        return null;
+    }
+
+    private function shouldIgnoreImageUrl(string $url): bool
+    {
+        $path = Str::lower((string) parse_url($url, PHP_URL_PATH));
+
+        return Str::endsWith($path, '/spaceball.gif');
     }
 
     private function buildDescription(array $item): string

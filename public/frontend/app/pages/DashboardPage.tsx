@@ -72,7 +72,7 @@ export function DashboardPage() {
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-3"><div className="w-9 h-9 rounded-lg bg-slate-50 flex items-center justify-center"><TrendingUp className="w-4.5 h-4.5 text-slate-600" /></div></div>
-            <div className="text-2xl font-bold text-slate-900 mb-0.5">${(dashboardData?.summary.month_spend ?? 0).toFixed(2)}</div>
+            <div className="text-2xl font-bold text-slate-900 mb-0.5">Â¥{(dashboardData?.summary.month_spend ?? 0).toFixed(2)}</div>
             <div className="text-xs font-medium text-slate-600">{t('dashboard.monthSpend')}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -114,9 +114,9 @@ export function DashboardPage() {
 
             <div className="flex items-center justify-center gap-3 pt-5 border-t border-slate-200 text-xs">
               <Link to="/procurement-list" className="flex items-center gap-1.5 text-slate-600 hover:text-[#4F6BFF] font-medium transition-colors"><ShoppingCart className="w-3.5 h-3.5" /><span>{t('dashboard.myList')}</span></Link>
-              <span className="text-slate-300">•</span>
+              <span className="text-slate-300">â€¢</span>
               <Link to="/sourcing" className="flex items-center gap-1.5 text-slate-600 hover:text-[#4F6BFF] font-medium transition-colors"><FileText className="w-3.5 h-3.5" /><span>{t('dashboard.customRequest')}</span></Link>
-              <span className="text-slate-300">•</span>
+              <span className="text-slate-300">â€¢</span>
               <button className="flex items-center gap-1.5 text-slate-600 hover:text-[#4F6BFF] font-medium transition-colors"><Package className="w-3.5 h-3.5" /><span>{t('dashboard.trackOrders')}</span></button>
             </div>
           </div>

@@ -66,7 +66,7 @@ class CatalogController extends Controller
 
     public function show(Product $product): ProductDetailResource
     {
-        $product->load(['category.parent', 'priceTiers', 'productImages']);
+        $product->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
 
         return new ProductDetailResource($product);
     }

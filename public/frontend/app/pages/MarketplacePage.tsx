@@ -138,7 +138,7 @@ export function MarketplacePage() {
             </p>
             {selectedCategory !== 'all' && (
               <>
-                <span className="text-slate-300">�</span>
+                <span className="text-slate-300">•</span>
                 <p className="font-semibold text-[#4F6BFF]">{products.length} products</p>
               </>
             )}
@@ -287,13 +287,13 @@ export function MarketplacePage() {
                       {product.price_tier_1 && (
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-600">{product.price_tier_1.range}</span>
-                          <span className="font-bold text-slate-900">${product.price_tier_1.price.toFixed(2)}</span>
+                          <span className="font-bold text-slate-900">¥{product.price_tier_1.price.toFixed(2)}</span>
                         </div>
                       )}
                       {product.price_tier_2 && (
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-600">{product.price_tier_2.range}</span>
-                          <span className="font-bold text-[#4F6BFF]">${product.price_tier_2.price.toFixed(2)}</span>
+                          <span className="font-bold text-[#4F6BFF]">¥{product.price_tier_2.price.toFixed(2)}</span>
                         </div>
                       )}
                     </div>

@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'fogot' => [
+        'base_url' => env('FOGOT_API_BASE_URL', 'https://py.fogot.cn/api/product'),
+    ],
+
 ];

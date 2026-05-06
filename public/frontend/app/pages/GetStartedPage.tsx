@@ -186,7 +186,7 @@ export function GetStartedPage() {
         {/* Additional Info */}
         <div className="mt-6 bg-[#EEF2FF] rounded-2xl border-2 border-[#4F6BFF]/20 p-4">
           <p className="text-sm text-slate-700 text-center">
-            <span className="font-semibold text-[#4F6BFF]">🎉 Welcome Bonus:</span> Get $100 credit for your first order
+            <span className="font-semibold text-[#4F6BFF]">🎉 Welcome Bonus:</span> Get ¥100 credit for your first order
           </p>
         </div>
       </div>

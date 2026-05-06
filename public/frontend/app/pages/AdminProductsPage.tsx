@@ -98,10 +98,13 @@ export function AdminProductsPage() {
         num_iid: importedProduct.num_iid,
         detail_url: importedProduct.detail_url,
         image_url: importedProduct.image_url,
+        main_image_url: importedProduct.main_image_url ?? importedProduct.image_url,
+        classified_category: importedProduct.classified_category,
         description: importedProduct.description,
         description_html: importedProduct.description_html,
         images: importedProduct.images,
         description_images: importedProduct.description_images,
+        variants: importedProduct.variants,
       },
     } : {}),
     moq: Number(form.moq),
@@ -140,10 +143,38 @@ export function AdminProductsPage() {
   };
 
   const resolveImportedDisplayImage = (product: ImportedMarketplaceProduct) => {
-    return product.display_image_url || product.image_url;
+    return product.processed_main_image?.preview_url || product.display_image_url || product.image_url;
+  };
+
+  const findCategoryIdByText = (value: string | null | undefined) => {
+    if (!value) {
+      return '';
+    }
+
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (!normalizedValue) {
+      return '';
+    }
+
+    const exactMatch = flatCategories.find((item) => item.label.toLowerCase() === normalizedValue || item.slug.toLowerCase() === normalizedValue);
+
+    if (exactMatch) {
+      return String(exactMatch.id);
+    }
+
+    const partialMatch = flatCategories.find((item) => item.label.toLowerCase().includes(normalizedValue) || normalizedValue.includes(item.slug.toLowerCase()));
+
+    return partialMatch ? String(partialMatch.id) : '';
   };
 
   const detectImportedCategoryId = (product: ImportedMarketplaceProduct) => {
+    const classifiedCategoryId = findCategoryIdByText(product.classified_category);
+
+    if (classifiedCategoryId) {
+      return classifiedCategoryId;
+    }
+
     const haystack = `${product.title} ${product.description ?? ''}`.toLowerCase();
 
     const keywordMappings: Array<{ categorySlug: string; keywords: string[] }> = [
@@ -248,7 +279,7 @@ export function AdminProductsPage() {
       sku: currentForm.sku || createSkuFromImportedProduct(previewProduct),
       description: buildImportedDescription(previewProduct),
       basePrice: previewProduct.original_price || currentForm.basePrice,
-      imageUrl: previewProduct.image_url || currentForm.imageUrl,
+      imageUrl: (previewProduct.main_image_url ?? previewProduct.image_url) || currentForm.imageUrl,
       categoryId: currentForm.categoryId || detectImportedCategoryId(previewProduct),
     }));
     setPreviewProduct(null);
@@ -496,6 +527,7 @@ export function AdminProductsPage() {
                         <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
                           <span>Price: {importedProduct.original_price ?? 'N/A'}</span>
                           <span>Platform: {importedProduct.platform.toUpperCase()}</span>
+                          {importedProduct.classified_category && <span>Category: {importedProduct.classified_category}</span>}
                         </div>
                       </div>
                     </div>
@@ -581,6 +613,7 @@ export function AdminProductsPage() {
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
                   <p><span className="font-semibold text-slate-900">Original Price:</span> {previewProduct.original_price ?? 'N/A'}</p>
                   <p className="break-all"><span className="font-semibold text-slate-900">Detail URL:</span> {previewProduct.detail_url ?? 'N/A'}</p>
+                  {previewProduct.classified_category && <p><span className="font-semibold text-slate-900">Detected Category:</span> {previewProduct.classified_category}</p>}
                 </div>
               </div>
             </div>

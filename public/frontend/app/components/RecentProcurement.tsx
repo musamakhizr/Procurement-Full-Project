@@ -99,7 +99,7 @@ export function RecentProcurement() {
 
                 {item.amount && (
                   <div className="text-right">
-                    <p className="font-bold text-slate-900 text-lg">${item.amount.toLocaleString()}</p>
+                    <p className="font-bold text-slate-900 text-lg">¥{item.amount.toLocaleString()}</p>
                   </div>
                 )}
               </div>

@@ -2,8 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import {
   addProcurementListItem,
   fetchProcurementList,
-  ProcurementListItem,
   ProductDetail,
+  ProcurementListItem,
   ProductSummary,
   removeProcurementListItem,
   updateProcurementListItem,
@@ -12,10 +12,14 @@ import { useAuth } from './AuthContext';
 
 interface ProcurementListContextType {
   items: ProcurementListItem[];
-  addItem: (item: Pick<ProductSummary, 'id' | 'moq'> | Pick<ProductDetail, 'id' | 'moq'>, quantity?: number) => Promise<void>;
+  addItem: (
+    item: Pick<ProductSummary, 'id' | 'moq'> | Pick<ProductDetail, 'id' | 'moq'>,
+    quantity?: number,
+    productVariantId?: number | null
+  ) => Promise<void>;
   removeItem: (id: number) => Promise<void>;
   updateQuantity: (id: number, quantity: number) => Promise<void>;
-  isInList: (productId: number) => boolean;
+  isInList: (productId: number, productVariantId?: number | null) => boolean;
   itemCount: number;
   isLoading: boolean;
 }
@@ -51,12 +55,13 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
 
   const addItem = async (
     item: Pick<ProductSummary, 'id' | 'moq'> | Pick<ProductDetail, 'id' | 'moq'>,
-    quantity?: number
+    quantity?: number,
+    productVariantId?: number | null
   ) => {
-    const savedItem = await addProcurementListItem(item.id, quantity ?? item.moq);
+    const savedItem = await addProcurementListItem(item.id, quantity ?? item.moq, productVariantId);
 
     setItems((prev) => {
-      const existingIndex = prev.findIndex((currentItem) => currentItem.product_id === savedItem.product_id);
+      const existingIndex = prev.findIndex((currentItem) => currentItem.product_id === savedItem.product_id && currentItem.product_variant_id === savedItem.product_variant_id);
 
       if (existingIndex === -1) {
         return [...prev, savedItem];
@@ -76,8 +81,8 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
     setItems((prev) => prev.map((item) => (item.id === id ? updatedItem : item)));
   };
 
-  const isInList = (productId: number) => {
-    return items.some((item) => item.product_id === productId);
+  const isInList = (productId: number, productVariantId?: number | null) => {
+    return items.some((item) => item.product_id === productId && (item.product_variant_id ?? null) === (productVariantId ?? null));
   };
 
   return (

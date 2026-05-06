@@ -57,7 +57,6 @@ export function SourcingPage() {
       });
       setSubmittedRef(response.data.reference);
       setCustomForm({ title: '', details: '', quantity: '', budget: '', deliveryDate: '' });
-      // Refresh recent requests list
       fetchSourcingRequests().then(setRecentRequests).catch(() => {});
     } catch (submitError: any) {
       setError(submitError?.response?.data?.message || 'Unable to submit your sourcing request.');
@@ -86,7 +85,6 @@ export function SourcingPage() {
       setSubmittedRef(response.data.reference);
       setLinksForm({ quantity: '', deliveryDate: '', notes: '' });
       setProductLinks(['']);
-      // Refresh recent requests list
       fetchSourcingRequests().then(setRecentRequests).catch(() => {});
     } catch (submitError: any) {
       setError(submitError?.response?.data?.message || 'Unable to submit product links.');
@@ -147,7 +145,7 @@ export function SourcingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Target Budget (Optional)</label>
-                  <input type="text" value={customForm.budget} onChange={(event) => setCustomForm({ ...customForm, budget: event.target.value })} placeholder="e.g., $2000 - $3000" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF] text-slate-900" />
+                  <input type="text" value={customForm.budget} onChange={(event) => setCustomForm({ ...customForm, budget: event.target.value })} placeholder="e.g., ¥2000 - ¥3000" className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF] text-slate-900" />
                 </div>
               </div>
               <div>

@@ -54,7 +54,7 @@ export function AIRecommendationPanel({ query, recommendations, onClose, onAddTo
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Total Estimate</p>
-              <p className="text-xl font-semibold text-gray-900">${totalCost.toLocaleString()}</p>
+              <p className="text-xl font-semibold text-gray-900">¥{totalCost.toLocaleString()}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Budget Match</p>
@@ -113,7 +113,7 @@ export function AIRecommendationPanel({ query, recommendations, onClose, onAddTo
                     </div>
                     <div>
                       <span className="text-gray-500">Unit Price: </span>
-                      <span className="font-semibold text-gray-900">${product.price}</span>
+                      <span className="font-semibold text-gray-900">¥{product.price}</span>
                     </div>
                     <div>
                       <span className="text-gray-500">MOQ: </span>
@@ -127,7 +127,7 @@ export function AIRecommendationPanel({ query, recommendations, onClose, onAddTo
 
                   <div className="flex items-center gap-3">
                     <span className="text-lg font-bold text-gray-900">
-                      ${(product.price * product.quantity).toLocaleString()}
+                      ¥{(product.price * product.quantity).toLocaleString()}
                     </span>
                     <button
                       onClick={() => onAddToCart(product.id)}

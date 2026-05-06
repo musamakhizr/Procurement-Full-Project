@@ -50,12 +50,40 @@ export interface ProductDetail {
   images: string[];
   description_images: string[];
   image_source_url?: string | null;
+  import_status?: string | null;
+  base_price: number;
   moq: number;
   lead_time: string;
   in_stock: boolean;
   stock_quantity: number;
   is_verified: boolean;
   is_customizable: boolean;
+  default_variant_id: number | null;
+  option_groups: Array<{
+    name: string;
+    values: Array<{
+      key: string;
+      value: string;
+      image: string | null;
+    }>;
+  }>;
+  variants: Array<{
+    id: number;
+    sku_id: string | null;
+    properties_key: string | null;
+    properties_name: string | null;
+    label: string | null;
+    image: string | null;
+    price: number;
+    original_price: number | null;
+    stock_quantity: number;
+    is_default: boolean;
+    option_values: Array<{
+      key: string;
+      group_name: string;
+      value: string;
+    }>;
+  }>;
   pricing_tiers: Array<{
     id: number;
     min_qty: number;
@@ -69,8 +97,16 @@ export interface ProductDetail {
 export interface ProcurementListItem {
   id: number;
   product_id: number;
+  product_variant_id: number | null;
   name: string;
   sku: string;
+  variant_sku_id?: string | null;
+  variant_label?: string | null;
+  variant_options?: Array<{
+    key: string;
+    group_name: string;
+    value: string;
+  }>;
   category: string;
   quantity: number;
   unit_price: number;
@@ -125,9 +161,13 @@ export interface AdminProductPayload {
     num_iid: string;
     detail_url?: string | null;
     image_url?: string | null;
+    main_image_url?: string | null;
+    classified_category?: string | null;
     description?: string | null;
     description_html?: string | null;
     images?: string[];
+    description_images?: string[];
+    variants?: ImportedMarketplaceVariant[];
   };
   moq: number;
   lead_time_min_days: number;
@@ -144,20 +184,49 @@ export interface AdminProductPayload {
   }>;
 }
 
+export interface ImportedMarketplaceImagePayload {
+  mime_type: string;
+  data: string;
+  preview_url: string;
+  source_url: string;
+}
+
 export interface ImportedMarketplaceProduct {
   title: string;
   original_price: string | null;
   detail_url: string | null;
   description: string;
   description_html?: string | null;
+  main_image_url?: string | null;
   image_url: string | null;
   display_image_url?: string | null;
   images: string[];
   display_images?: string[];
   description_images?: string[];
   display_description_images?: string[];
+  processed_main_image?: ImportedMarketplaceImagePayload | null;
+  processed_gallery_images?: ImportedMarketplaceImagePayload[];
+  processed_description_images?: ImportedMarketplaceImagePayload[];
+  classified_category?: string | null;
+  variants?: ImportedMarketplaceVariant[];
   platform: string;
   num_iid: string;
+}
+
+export interface ImportedMarketplaceVariant {
+  sku_id: string;
+  properties_key?: string | null;
+  properties_name?: string | null;
+  label: string;
+  image_url?: string | null;
+  price?: number | null;
+  original_price?: number | null;
+  stock_quantity?: number;
+  option_values: Array<{
+    key: string;
+    group_name: string;
+    value: string;
+  }>;
 }
 
 interface AuthResponse {
@@ -247,10 +316,11 @@ export async function fetchProcurementList() {
   return data;
 }
 
-export async function addProcurementListItem(productId: number, quantity?: number) {
+export async function addProcurementListItem(productId: number, quantity?: number, productVariantId?: number | null) {
   const { data } = await api.post<ProcurementListItem>('/procurement-list', {
     product_id: productId,
     quantity,
+    product_variant_id: productVariantId,
   });
   return data;
 }

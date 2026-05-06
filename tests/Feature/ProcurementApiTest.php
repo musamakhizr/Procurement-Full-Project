@@ -74,4 +74,59 @@ class ProcurementApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1);
     }
+
+    public function test_authenticated_user_can_add_a_specific_variant_to_procurement_list(): void
+    {
+        $user = User::factory()->create();
+        $category = Category::query()->create([
+            'name' => 'Bags',
+            'slug' => 'bags',
+            'sort_order' => 1,
+        ]);
+
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TB-611914001781',
+            'name' => 'Taobao Backpack',
+            'description' => 'Imported backpack.',
+            'moq' => 1,
+            'lead_time_min_days' => 2,
+            'lead_time_max_days' => 4,
+            'stock_quantity' => 100,
+            'base_price' => 69.90,
+        ]);
+
+        $variant = $product->variants()->create([
+            'source_sku_id' => '4479881078464',
+            'source_properties_key' => '1627207:21287481607',
+            'source_properties_name' => '1627207:21287481607:颜色分类:冰雾粉-15升',
+            'label' => '冰雾粉-15升',
+            'option_values' => [
+                [
+                    'key' => '1627207:21287481607',
+                    'group_name' => '颜色分类',
+                    'value' => '冰雾粉-15升',
+                ],
+            ],
+            'price' => 69.90,
+            'original_price' => 69.90,
+            'stock_quantity' => 200,
+            'is_default' => true,
+            'sort_order' => 0,
+        ]);
+
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/procurement-list', [
+                'product_id' => $product->id,
+                'product_variant_id' => $variant->id,
+                'quantity' => 2,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('product_id', $product->id)
+            ->assertJsonPath('product_variant_id', $variant->id)
+            ->assertJsonPath('variant_label', '冰雾粉-15升')
+            ->assertJsonPath('unit_price', 69.9);
+    }
 }

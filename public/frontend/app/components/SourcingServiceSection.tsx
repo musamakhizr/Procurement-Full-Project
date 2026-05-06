@@ -99,7 +99,7 @@ export function SourcingServiceSection() {
                       </label>
                       <input
                         type="text"
-                        placeholder="$5,000"
+                        placeholder="¥5,000"
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder:text-gray-400"
                       />
                     </div>
@@ -151,7 +151,7 @@ export function SourcingServiceSection() {
                       </label>
                       <input
                         type="text"
-                        placeholder="$10,000"
+                        placeholder="¥10,000"
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder:text-gray-400"
                       />
                     </div>

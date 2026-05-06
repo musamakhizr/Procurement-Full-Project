@@ -77,7 +77,7 @@ export function ProductCard({
         <div className="flex items-center justify-between pt-5 border-t-2 border-slate-100">
           <div>
             <p className="text-[11px] text-slate-500 mb-1 uppercase tracking-wide font-semibold">Business pricing</p>
-            <p className="text-2xl font-bold text-slate-900">${price}</p>
+            <p className="text-2xl font-bold text-slate-900">¥{price}</p>
           </div>
           <button className="flex items-center gap-2 px-5 py-2.5 bg-[#4F6BFF] text-white rounded-xl font-semibold hover:bg-[#3F5AF5] transition-colors text-sm shadow-sm">
             Request Quote

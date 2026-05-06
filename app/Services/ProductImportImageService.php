@@ -13,6 +13,44 @@ use RuntimeException;
 class ProductImportImageService
 {
     /**
+     * @param  array<int, array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}>  $galleryImages
+     * @param  array<int, array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}>  $descriptionImages
+     */
+    public function syncMixedProductImages(Product $product, array $galleryImages, array $descriptionImages = []): void
+    {
+        $savedGalleryImages = collect($galleryImages)
+            ->values()
+            ->map(fn (array $image, int $index) => $this->storeMixedImage($product, $image, $index, 'gallery'))
+            ->filter()
+            ->values();
+
+        $savedDescriptionImages = collect($descriptionImages)
+            ->values()
+            ->map(fn (array $image, int $index) => $this->storeMixedImage($product, $image, $index, 'description'))
+            ->filter()
+            ->values();
+
+        if ($savedGalleryImages->isEmpty() && $savedDescriptionImages->isEmpty()) {
+            throw new RuntimeException('Unable to store any product images from the import payload.');
+        }
+
+        $this->deleteExistingImages($product);
+
+        $product->productImages()->delete();
+        $product->productImages()->createMany([
+            ...$savedGalleryImages->all(),
+            ...$savedDescriptionImages->all(),
+        ]);
+
+        $primaryImage = $savedGalleryImages->first() ?? $savedDescriptionImages->first();
+
+        $product->forceFill([
+            'image_url' => $primaryImage['path'],
+            'source_image_url' => $primaryImage['source_url'],
+        ])->save();
+    }
+
+    /**
      * @param  array<int, string>  $galleryUrls
      * @param  array<int, string>  $descriptionUrls
      */
@@ -56,6 +94,57 @@ class ProductImportImageService
     }
 
     /**
+     * @param  array{mime_type?:string,data?:string,source_url?:string}|null  $mainImage
+     * @param  array<int, array{mime_type?:string,data?:string,source_url?:string}>  $galleryImages
+     * @param  array<int, array{mime_type?:string,data?:string,source_url?:string}>  $descriptionImages
+     */
+    public function syncProcessedProductImages(Product $product, ?array $mainImage, array $galleryImages = [], array $descriptionImages = []): void
+    {
+        $normalizedMainImage = $this->normalizeProcessedImage($mainImage);
+        $normalizedGalleryImages = $this->normalizeProcessedImages($galleryImages);
+        $normalizedDescriptionImages = $this->normalizeProcessedImages($descriptionImages);
+
+        if ($normalizedMainImage !== null && $normalizedGalleryImages->every(fn (array $image) => ! $this->sameProcessedImage($image, $normalizedMainImage))) {
+            $normalizedGalleryImages->prepend($normalizedMainImage);
+        }
+
+        if ($normalizedGalleryImages->isEmpty() && $normalizedDescriptionImages->isEmpty()) {
+            return;
+        }
+
+        $savedGalleryImages = $normalizedGalleryImages
+            ->values()
+            ->map(fn (array $image, int $index) => $this->storeProcessedImage($product, $image, $index, 'gallery'))
+            ->filter()
+            ->values();
+
+        $savedDescriptionImages = $normalizedDescriptionImages
+            ->values()
+            ->map(fn (array $image, int $index) => $this->storeProcessedImage($product, $image, $index, 'description'))
+            ->filter()
+            ->values();
+
+        if ($savedGalleryImages->isEmpty() && $savedDescriptionImages->isEmpty()) {
+            throw new RuntimeException('Unable to decode and store processed product images.');
+        }
+
+        $this->deleteExistingImages($product);
+
+        $product->productImages()->delete();
+        $product->productImages()->createMany([
+            ...$savedGalleryImages->all(),
+            ...$savedDescriptionImages->all(),
+        ]);
+
+        $primaryImage = $savedGalleryImages->first() ?? $savedDescriptionImages->first();
+
+        $product->forceFill([
+            'image_url' => $primaryImage['path'],
+            'source_image_url' => $primaryImage['source_url'],
+        ])->save();
+    }
+
+    /**
      * @param  array<int, string>  $urls
      * @return Collection<int, string>
      */
@@ -79,6 +168,54 @@ class ProductImportImageService
         if ($paths !== []) {
             Storage::disk('public')->delete($paths);
         }
+    }
+
+    /**
+     * @param  array<int, array{mime_type?:string,data?:string,source_url?:string}>  $images
+     * @return Collection<int, array{mime_type:string,data:string,source_url:?string}>
+     */
+    private function normalizeProcessedImages(array $images): Collection
+    {
+        return collect($images)
+            ->map(fn ($image) => is_array($image) ? $this->normalizeProcessedImage($image) : null)
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * @param  array{mime_type?:string,data?:string,source_url?:string}|null  $image
+     * @return array{mime_type:string,data:string,source_url:?string}|null
+     */
+    private function normalizeProcessedImage(?array $image): ?array
+    {
+        if (! is_array($image)) {
+            return null;
+        }
+
+        $data = $image['data'] ?? null;
+
+        if (! is_string($data) || trim($data) === '') {
+            return null;
+        }
+
+        $mimeType = $image['mime_type'] ?? 'image/jpeg';
+        $sourceUrl = $image['source_url'] ?? null;
+
+        return [
+            'mime_type' => is_string($mimeType) && trim($mimeType) !== '' ? trim($mimeType) : 'image/jpeg',
+            'data' => trim($data),
+            'source_url' => is_string($sourceUrl) && filter_var($sourceUrl, FILTER_VALIDATE_URL) ? trim($sourceUrl) : null,
+        ];
+    }
+
+    /**
+     * @param  array{mime_type:string,data:string,source_url:?string}  $left
+     * @param  array{mime_type:string,data:string,source_url:?string}  $right
+     */
+    private function sameProcessedImage(array $left, array $right): bool
+    {
+        return $left['data'] === $right['data']
+            || ($left['source_url'] !== null && $left['source_url'] === $right['source_url']);
     }
 
     private function downloadImage(Product $product, string $url, int $index, string $section): ?array
@@ -115,6 +252,69 @@ class ProductImportImageService
         ];
     }
 
+    /**
+     * @param  array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}  $image
+     */
+    private function storeMixedImage(Product $product, array $image, int $index, string $section): ?array
+    {
+        return match ($image['type'] ?? null) {
+            'processed' => $this->storeProcessedImage(
+                $product,
+                [
+                    'mime_type' => (string) ($image['mime_type'] ?? 'image/jpeg'),
+                    'data' => (string) ($image['data'] ?? ''),
+                    'source_url' => is_string($image['source_url'] ?? null) ? $image['source_url'] : null,
+                ],
+                $index,
+                $section,
+            ),
+            'remote' => is_string($image['url'] ?? null)
+                ? $this->downloadImage($product, $image['url'], $index, $section)
+                : null,
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array{mime_type:string,data:string,source_url:?string}  $image
+     */
+    private function storeProcessedImage(Product $product, array $image, int $index, string $section): ?array
+    {
+        $binary = $this->decodeBase64Image($image['data']);
+
+        if ($binary === null) {
+            return null;
+        }
+
+        $extension = $this->resolveExtensionFromMimeType($image['mime_type']);
+        $directory = 'products/'.$product->getKey().'/'.$section;
+        $filename = sprintf('%02d-%s.%s', $index + 1, Str::random(12), $extension);
+        $path = $directory.'/'.$filename;
+
+        Storage::disk('public')->put($path, $binary);
+
+        return [
+            'path' => $path,
+            'source_url' => $image['source_url'],
+            'section' => $section,
+            'sort_order' => $index,
+            'is_primary' => $section === 'gallery' && $index === 0,
+        ];
+    }
+
+    private function decodeBase64Image(string $data): ?string
+    {
+        $normalized = preg_replace('/^data:[^;]+;base64,/i', '', trim($data));
+
+        if (! is_string($normalized) || $normalized === '') {
+            return null;
+        }
+
+        $decoded = base64_decode(str_replace(["\r", "\n", ' '], '', $normalized), true);
+
+        return $decoded === false ? null : $decoded;
+    }
+
     private function resolveExtension(string $contentType, string $url): string
     {
         $mimeExtension = match ($contentType) {
@@ -134,5 +334,16 @@ class ProductImportImageService
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         return $extension !== '' ? $extension : 'jpg';
+    }
+
+    private function resolveExtensionFromMimeType(string $mimeType): string
+    {
+        return match (strtolower(trim($mimeType))) {
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'image/svg+xml' => 'svg',
+            default => 'jpg',
+        };
     }
 }

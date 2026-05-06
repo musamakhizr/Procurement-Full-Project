@@ -23,6 +23,10 @@ class Product extends Model
         'source_product_id',
         'source_url',
         'source_image_url',
+        'source_category_label',
+        'import_status',
+        'import_error',
+        'source_payload',
         'moq',
         'lead_time_min_days',
         'lead_time_max_days',
@@ -38,6 +42,7 @@ class Product extends Model
         'is_customizable' => 'boolean',
         'is_active' => 'boolean',
         'base_price' => 'decimal:2',
+        'source_payload' => 'array',
     ];
 
     public function category(): BelongsTo
@@ -53,6 +58,11 @@ class Product extends Model
     public function productImages(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('sort_order');
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
     }
 
     protected function formattedLeadTime(): Attribute
@@ -84,7 +94,7 @@ class Product extends Model
      */
     public function galleryPaths(): Collection
     {
-        if ($this->relationLoaded('productImages') && $this->productImages->isNotEmpty()) {
+        if ($this->relationLoaded('productImages') && $this->productImages->where('section', 'gallery')->isNotEmpty()) {
             return $this->productImages
                 ->where('section', 'gallery')
                 ->pluck('path')
@@ -92,8 +102,13 @@ class Product extends Model
                 ->values();
         }
 
+        $sourceGalleryImages = collect(data_get($this->source_payload, 'images', []))
+            ->filter(fn ($path) => is_string($path) && $path !== '');
+
         return collect([$this->image_url])
+            ->merge($sourceGalleryImages)
             ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->unique()
             ->values();
     }
 
@@ -102,13 +117,15 @@ class Product extends Model
      */
     public function descriptionImagePaths(): Collection
     {
-        if (! $this->relationLoaded('productImages') || $this->productImages->isEmpty()) {
-            return collect();
+        if ($this->relationLoaded('productImages') && $this->productImages->where('section', 'description')->isNotEmpty()) {
+            return $this->productImages
+                ->where('section', 'description')
+                ->pluck('path')
+                ->filter(fn ($path) => is_string($path) && $path !== '')
+                ->values();
         }
 
-        return $this->productImages
-            ->where('section', 'description')
-            ->pluck('path')
+        return collect(data_get($this->source_payload, 'description_images', []))
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values();
     }

@@ -5,10 +5,10 @@ import { useProcurementList } from '../contexts/ProcurementListContext';
 import { ProcurementListItem } from '../api';
 
 function downloadCSV(items: ProcurementListItem[]) {
-  const headers = ['SKU', 'Product Name', 'Category', 'Quantity', 'Unit Price (USD)', 'Line Total (USD)'];
+  const headers = ['SKU', 'Product Name', 'Category', 'Quantity', 'Unit Price (RMB)', 'Line Total (RMB)'];
   const rows = items.map((item) => [
-    item.sku,
-    `"${item.name.replace(/"/g, '""')}"`,
+    item.variant_sku_id || item.sku,
+    `"${[item.name, item.variant_label].filter(Boolean).join(' - ').replace(/"/g, '""')}"`,
     item.category,
     item.quantity,
     item.unit_price.toFixed(2),
@@ -40,31 +40,31 @@ export function ProcurementListPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
       <div className="max-w-[1400px] mx-auto px-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600 mb-8">
+        <div className="mb-8 flex items-center gap-2 text-sm text-slate-600">
           <Link to="/" className="hover:text-[#4F6BFF]">{t('product.home')}</Link>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-slate-900 font-medium">{t('procurementList.title')}</span>
+          <span className="font-medium text-slate-900">{t('procurementList.title')}</span>
         </div>
 
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-3">{t('procurementList.title')}</h1>
-          <p className="text-slate-600 text-lg">{t('procurementList.subtitle')}</p>
+          <h1 className="mb-3 text-4xl font-bold text-slate-900">{t('procurementList.title')}</h1>
+          <p className="text-lg text-slate-600">{t('procurementList.subtitle')}</p>
         </div>
 
         {isLoading ? (
-          <div className="bg-white rounded-2xl border-2 border-slate-200 p-12 text-center text-slate-500">Loading your procurement list...</div>
+          <div className="rounded-2xl border-2 border-slate-200 bg-white p-12 text-center text-slate-500">Loading your procurement list...</div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            <div className="space-y-4 lg:col-span-2">
               {items.length === 0 ? (
-                <div className="bg-white rounded-2xl border-2 border-slate-200 p-12 text-center">
-                  <div className="max-w-md mx-auto">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Plus className="w-8 h-8 text-slate-400" />
+                <div className="rounded-2xl border-2 border-slate-200 bg-white p-12 text-center">
+                  <div className="mx-auto max-w-md">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                      <Plus className="h-8 w-8 text-slate-400" />
                     </div>
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">{t('procurementList.emptyTitle')}</h3>
-                    <p className="text-slate-600 mb-6">{t('procurementList.emptySubtitle')}</p>
-                    <Link to="/marketplace" className="inline-block px-6 py-3 bg-[#4F6BFF] text-white font-semibold rounded-xl hover:bg-[#3D56E0] transition-colors">
+                    <h3 className="mb-2 text-xl font-bold text-slate-900">{t('procurementList.emptyTitle')}</h3>
+                    <p className="mb-6 text-slate-600">{t('procurementList.emptySubtitle')}</p>
+                    <Link to="/marketplace" className="inline-block rounded-xl bg-[#4F6BFF] px-6 py-3 font-semibold text-white transition-colors hover:bg-[#3D56E0]">
                       {t('procurementList.browseCatalog')}
                     </Link>
                   </div>
@@ -72,45 +72,55 @@ export function ProcurementListPage() {
               ) : (
                 <>
                   {items.map((item) => (
-                    <div key={item.id} className="bg-white rounded-2xl border-2 border-slate-200 p-6 hover:border-[#4F6BFF]/40 transition-all">
+                    <div key={item.id} className="rounded-2xl border-2 border-slate-200 bg-white p-6 transition-all hover:border-[#4F6BFF]/40">
                       <div className="flex gap-6">
                         <Link to={`/marketplace/product/${item.product_id}`} className="flex-shrink-0">
-                          <div className="w-24 h-24 bg-slate-100 rounded-xl overflow-hidden">
-                            <img src={item.image ?? 'https://placehold.co/200x200?text=Product'} alt={item.name} className="w-full h-full object-cover" />
+                          <div className="h-24 w-24 overflow-hidden rounded-xl bg-slate-100">
+                            <img src={item.image ?? 'https://placehold.co/200x200?text=Product'} alt={item.name} className="h-full w-full object-cover" />
                           </div>
                         </Link>
 
                         <div className="flex-1">
-                          <div className="flex items-start justify-between mb-2">
+                          <div className="mb-2 flex items-start justify-between">
                             <div>
-                              <div className="text-xs text-[#7C3AED] font-semibold mb-1">{item.category}</div>
-                              <Link to={`/marketplace/product/${item.product_id}`} className="font-bold text-slate-900 hover:text-[#4F6BFF] transition-colors">
+                              <div className="mb-1 text-xs font-semibold text-[#7C3AED]">{item.category}</div>
+                              <Link to={`/marketplace/product/${item.product_id}`} className="font-bold text-slate-900 transition-colors hover:text-[#4F6BFF]">
                                 {item.name}
                               </Link>
-                              <div className="text-sm text-slate-500 mt-1">SKU: {item.sku}</div>
+                              <div className="mt-1 text-sm text-slate-500">SKU: {item.variant_sku_id || item.sku}</div>
+                              {item.variant_label && <div className="mt-2 text-sm font-semibold text-[#F97316]">{item.variant_label}</div>}
+                              {item.variant_options && item.variant_options.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {item.variant_options.map((option) => (
+                                    <span key={`${item.id}-${option.key}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                      {option.group_name}: {option.value}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <button onClick={() => void removeItem(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                              <Trash2 className="w-4 h-4" />
+                            <button onClick={() => void removeItem(item.id)} className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50">
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
 
-                          <div className="flex items-center justify-between mt-4">
+                          <div className="mt-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-semibold text-slate-700">{t('product.quantity')}:</span>
                               <div className="flex items-center gap-2">
-                                <button onClick={() => void updateQuantity(item.id, Math.max(item.moq, item.quantity - 1))} className="w-8 h-8 border-2 border-slate-200 rounded-lg hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-bold text-slate-700">
-                                  <Minus className="w-4 h-4 mx-auto" />
+                                <button onClick={() => void updateQuantity(item.id, Math.max(item.moq, item.quantity - 1))} className="h-8 w-8 rounded-lg border-2 border-slate-200 font-bold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]">
+                                  <Minus className="mx-auto h-4 w-4" />
                                 </button>
                                 <span className="w-12 text-center font-bold text-slate-900">{item.quantity}</span>
-                                <button onClick={() => void updateQuantity(item.id, item.quantity + 1)} className="w-8 h-8 border-2 border-slate-200 rounded-lg hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-bold text-slate-700">
-                                  <Plus className="w-4 h-4 mx-auto" />
+                                <button onClick={() => void updateQuantity(item.id, item.quantity + 1)} className="h-8 w-8 rounded-lg border-2 border-slate-200 font-bold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]">
+                                  <Plus className="mx-auto h-4 w-4" />
                                 </button>
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <div className="text-sm text-slate-600">${item.unit_price.toFixed(2)} � {item.quantity}</div>
-                              <div className="text-xl font-bold text-slate-900">${item.line_total.toFixed(2)}</div>
+                              <div className="text-sm text-slate-600">¥{item.unit_price.toFixed(2)} x {item.quantity}</div>
+                              <div className="text-xl font-bold text-slate-900">¥{item.line_total.toFixed(2)}</div>
                             </div>
                           </div>
                         </div>
@@ -118,8 +128,8 @@ export function ProcurementListPage() {
                     </div>
                   ))}
 
-                  <Link to="/marketplace" className="flex items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-600 hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF] transition-colors font-semibold">
-                    <Plus className="w-5 h-5" />
+                  <Link to="/marketplace" className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 py-4 font-semibold text-slate-600 transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF]">
+                    <Plus className="h-5 w-5" />
                     {t('procurementList.addMoreItems')}
                   </Link>
                 </>
@@ -128,49 +138,49 @@ export function ProcurementListPage() {
 
             {items.length > 0 && (
               <div className="lg:col-span-1">
-                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sticky top-24">
-                  <h3 className="text-xl font-bold text-slate-900 mb-6">{t('procurementList.summary')}</h3>
+                <div className="sticky top-24 rounded-2xl border-2 border-slate-200 bg-white p-6">
+                  <h3 className="mb-6 text-xl font-bold text-slate-900">{t('procurementList.summary')}</h3>
 
-                  <div className="space-y-3 mb-6 pb-6 border-b-2 border-slate-200">
+                  <div className="mb-6 space-y-3 border-b-2 border-slate-200 pb-6">
                     <div className="flex items-center justify-between text-slate-700">
                       <span>{t('procurementList.totalItems')}</span>
                       <span className="font-semibold">{getTotalItems()} {t('marketplace.units')}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-700">
                       <span>{t('procurementList.subtotal')}</span>
-                      <span className="font-semibold">${getTotal().toFixed(2)}</span>
+                      <span className="font-semibold">¥{getTotal().toFixed(2)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-slate-600 text-sm">
+                    <div className="flex items-center justify-between text-sm text-slate-600">
                       <span>{t('procurementList.estimatedTax')}</span>
                       <span>{t('procurementList.calculatedAtCheckout')}</span>
                     </div>
-                    <div className="flex items-center justify-between text-slate-600 text-sm">
+                    <div className="flex items-center justify-between text-sm text-slate-600">
                       <span>{t('procurementList.shipping')}</span>
                       <span>{t('procurementList.calculatedAtCheckout')}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mb-6 text-xl">
+                  <div className="mb-6 flex items-center justify-between text-xl">
                     <span className="font-bold text-slate-900">{t('product.totalEstimate')}</span>
-                    <span className="font-bold text-[#4F6BFF]">${getTotal().toFixed(2)}</span>
+                    <span className="font-bold text-[#4F6BFF]">¥{getTotal().toFixed(2)}</span>
                   </div>
 
                   <div className="space-y-3">
-                    <button onClick={() => navigate('/sourcing')} className="w-full py-4 bg-[#4F6BFF] text-white font-bold rounded-xl hover:bg-[#3D56E0] transition-colors flex items-center justify-center gap-2">
-                      <Send className="w-5 h-5" />
+                    <button onClick={() => navigate('/sourcing')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4F6BFF] py-4 font-bold text-white transition-colors hover:bg-[#3D56E0]">
+                      <Send className="h-5 w-5" />
                       {t('procurementList.requestQuote')}
                     </button>
                     <button
                       onClick={() => downloadCSV(items)}
-                      className="w-full py-4 border-2 border-slate-200 text-slate-700 font-semibold rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF] transition-colors flex items-center justify-center gap-2"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-200 py-4 font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF]"
                     >
-                      <Download className="w-5 h-5" />
+                      <Download className="h-5 w-5" />
                       {t('procurementList.downloadList')}
                     </button>
                   </div>
 
-                  <div className="mt-6 pt-6 border-t-2 border-slate-200">
-                    <p className="text-sm text-slate-600 text-center">{t('procurementList.quoteNote')}</p>
+                  <div className="mt-6 border-t-2 border-slate-200 pt-6">
+                    <p className="text-center text-sm text-slate-600">{t('procurementList.quoteNote')}</p>
                   </div>
                 </div>
               </div>

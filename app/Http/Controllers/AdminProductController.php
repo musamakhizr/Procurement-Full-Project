@@ -8,14 +8,14 @@ use App\Http\Resources\ProductDetailResource;
 use App\Http\Resources\ProductListResource;
 use App\Models\Category;
 use App\Models\Product;
-use App\Services\ProductImportImageService;
+use App\Services\ImportedProductSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AdminProductController extends Controller
 {
     public function __construct(
-        private readonly ProductImportImageService $productImportImageService,
+        private readonly ImportedProductSyncService $importedProductSyncService,
     ) {
     }
 
@@ -64,6 +64,8 @@ class AdminProductController extends Controller
                 'source_product_id' => data_get($importSource, 'num_iid'),
                 'source_url' => data_get($importSource, 'detail_url'),
                 'source_image_url' => data_get($importSource, 'image_url'),
+                'source_category_label' => data_get($importSource, 'classified_category'),
+                'import_status' => is_array($importSource) ? 'pending' : null,
                 'moq' => $request->integer('moq'),
                 'lead_time_min_days' => $request->integer('lead_time_min_days'),
                 'lead_time_max_days' => $request->integer('lead_time_max_days'),
@@ -75,12 +77,14 @@ class AdminProductController extends Controller
             ]);
 
             $this->syncPriceTiers($product, $request->input('price_tiers', []));
-            $this->syncImportedImages($product, $importSource);
+            $this->importedProductSyncService->syncVariants($product, is_array($importSource) ? $importSource : null);
 
             return $product;
         });
 
-        $product->load(['category.parent', 'priceTiers', 'productImages']);
+        $this->importedProductSyncService->schedule($product, $request->input('import_source'));
+
+        $product->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
 
         return (new ProductDetailResource($product))
             ->response()
@@ -100,9 +104,12 @@ class AdminProductController extends Controller
                     'source_product_id' => data_get($importSource, 'num_iid'),
                     'source_url' => data_get($importSource, 'detail_url'),
                     'source_image_url' => data_get($importSource, 'image_url'),
+                    'source_category_label' => data_get($importSource, 'classified_category'),
+                    'import_status' => 'pending',
+                    'import_error' => null,
                 ])->save();
 
-                $this->syncImportedImages($product, $importSource);
+                $this->importedProductSyncService->syncVariants($product, is_array($importSource) ? $importSource : null);
             }
 
             if ($request->has('price_tiers')) {
@@ -110,7 +117,11 @@ class AdminProductController extends Controller
             }
         });
 
-        $product->load(['category.parent', 'priceTiers', 'productImages']);
+        if ($request->has('import_source')) {
+            $this->importedProductSyncService->schedule($product, $request->input('import_source'));
+        }
+
+        $product->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
 
         return new ProductDetailResource($product);
     }
@@ -135,21 +146,5 @@ class AdminProductController extends Controller
                 'price' => $tier['price'],
             ]);
         }
-    }
-
-    private function syncImportedImages(Product $product, mixed $importSource): void
-    {
-        $imageUrls = data_get($importSource, 'images', []);
-        $descriptionImageUrls = data_get($importSource, 'description_images', []);
-
-        if ((! is_array($imageUrls) || $imageUrls === []) && (! is_array($descriptionImageUrls) || $descriptionImageUrls === [])) {
-            return;
-        }
-
-        $this->productImportImageService->syncProductImages(
-            $product,
-            is_array($imageUrls) ? $imageUrls : [],
-            is_array($descriptionImageUrls) ? $descriptionImageUrls : [],
-        );
     }
 }
