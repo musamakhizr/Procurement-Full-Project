@@ -9,10 +9,20 @@ use Throwable;
 
 class FogotProductMediaService
 {
+    private const DESCRIPTION_IMAGE_ALLOWED_CATEGORY = '介绍商品';
+
     /**
      * @return array{mime_type:string,data:string,preview_url:string,source_url:string}|null
      */
     public function redrawMainImage(string $imageUrl): ?array
+    {
+        return $this->safeProcessMainImage($imageUrl);
+    }
+
+    /**
+     * @return array{mime_type:string,data:string,preview_url:string,source_url:string}|null
+     */
+    public function redrawImage(string $imageUrl): ?array
     {
         return $this->safeProcessMainImage($imageUrl);
     }
@@ -25,9 +35,24 @@ class FogotProductMediaService
         return $this->safeProcessDetailImages([$imageUrl]);
     }
 
-    public function classifyImage(string $imageUrl): ?string
+    public function classifyDescriptionImage(string $imageUrl): ?string
     {
-        return $this->safeClassifyCategory($imageUrl);
+        return $this->safeClassifyDetailImage($imageUrl);
+    }
+
+    public function shouldKeepDescriptionImage(string $imageUrl): bool
+    {
+        $category = $this->classifyDescriptionImage($imageUrl);
+
+        return $category === null || $category === self::DESCRIPTION_IMAGE_ALLOWED_CATEGORY;
+    }
+
+    /**
+     * @return array<string, scalar>|null
+     */
+    public function classifyProductCategory(string $productText, array $item): ?array
+    {
+        return $this->safeClassifyProductCategory($productText, $item);
     }
 
     /**
@@ -45,7 +70,7 @@ class FogotProductMediaService
         $mainImage = $mainImageUrl ? $this->safeProcessMainImage($mainImageUrl) : null;
         $galleryImages = $this->safeProcessDetailImages($galleryImageUrls);
         $descriptionImages = $this->safeProcessDetailImages($descriptionImageUrls);
-        $category = $mainImageUrl ? $this->safeClassifyCategory($mainImageUrl) : null;
+        $category = null;
 
         return [
             'main_image' => $mainImage,
@@ -90,13 +115,31 @@ class FogotProductMediaService
         }
     }
 
-    private function safeClassifyCategory(string $imageUrl): ?string
+    private function safeClassifyDetailImage(string $imageUrl): ?string
     {
         try {
-            return $this->classifyCategory($imageUrl);
+            return $this->classifyDetailImageCategory($imageUrl);
         } catch (Throwable $exception) {
-            $this->logPreviewWarning('Fogot category classification failed during product preview.', [
+            $this->logPreviewWarning('Fogot detail image classification failed during product preview.', [
                 'image_url' => $imageUrl,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, scalar>|null
+     */
+    private function safeClassifyProductCategory(string $productText, array $item): ?array
+    {
+        try {
+            return $this->classifyProductCategoryLabel($productText, $item);
+        } catch (Throwable $exception) {
+            $this->logPreviewWarning('Fogot product category classification failed during product preview.', [
+                'product_text' => $productText,
+                'item_name' => $item['item_name'] ?? null,
                 'error' => $exception->getMessage(),
             ]);
 
@@ -155,7 +198,7 @@ class FogotProductMediaService
         return array_values($processedImages);
     }
 
-    private function classifyCategory(string $imageUrl): ?string
+    private function classifyDetailImageCategory(string $imageUrl): ?string
     {
         $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
 
@@ -169,6 +212,47 @@ class FogotProductMediaService
             ?? data_get($json, 'data.category');
 
         return is_string($category) && trim($category) !== '' ? trim($category) : null;
+    }
+
+    /**
+     * @return array<string, scalar>|null
+     */
+    private function classifyProductCategoryLabel(string $productText, array $item): ?array
+    {
+        $json = $this->postJson('/category/classify', [
+            'product_text' => $productText,
+            'items' => [[
+                'number' => 0,
+                'item_name' => (string) ($item['item_name'] ?? ''),
+                'description' => (string) ($item['description'] ?? ''),
+                'picture' => (string) ($item['picture'] ?? ''),
+                'delivery_date' => (string) ($item['delivery_date'] ?? ''),
+                'note' => (string) ($item['note'] ?? ''),
+                'link' => (string) ($item['link'] ?? ''),
+            ]],
+            'category_dict_text' => (string) config('services.fogot.category_dict_text', ''),
+        ]);
+
+        $firstItem = data_get($json, 'items.0')
+            ?? data_get($json, 'body.items.0')
+            ?? data_get($json, 'data.items.0');
+
+        if (! is_array($firstItem)) {
+            return null;
+        }
+
+        $category = collect($firstItem)
+            ->filter(function ($value) {
+                if (is_string($value)) {
+                    return trim($value) !== '';
+                }
+
+                return is_int($value) || is_float($value) || is_bool($value);
+            })
+            ->map(fn ($value) => is_string($value) ? trim($value) : $value)
+            ->all();
+
+        return $category !== [] ? $category : null;
     }
 
     /**

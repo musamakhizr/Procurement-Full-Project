@@ -20,7 +20,6 @@ class ClassifyImportedProductCategory implements ShouldQueue
 
     public function __construct(
         public readonly int $productId,
-        public readonly string $imageUrl,
     ) {
     }
 
@@ -32,6 +31,6 @@ class ClassifyImportedProductCategory implements ShouldQueue
             return;
         }
 
-        $importedProductSyncService->classifyCategory($product, $this->imageUrl);
+        $importedProductSyncService->classifyCategory($product);
     }
 }

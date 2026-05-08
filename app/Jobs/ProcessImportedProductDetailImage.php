@@ -23,6 +23,7 @@ class ProcessImportedProductDetailImage implements ShouldQueue
         public readonly string $imageUrl,
         public readonly string $section,
         public readonly int $sortOrder,
+        public readonly string $processor = 'translate',
     ) {
     }
 
@@ -34,6 +35,6 @@ class ProcessImportedProductDetailImage implements ShouldQueue
             return;
         }
 
-        $importedProductSyncService->processDetailImage($product, $this->imageUrl, $this->section, $this->sortOrder);
+        $importedProductSyncService->processDetailImage($product, $this->imageUrl, $this->section, $this->sortOrder, $this->processor);
     }
 }

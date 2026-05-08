@@ -23,6 +23,7 @@ class UpdateProductRequest extends FormRequest
             'description' => ['sometimes', 'string'],
             'image_url' => ['nullable', 'url'],
             'import_source' => ['sometimes', 'array'],
+            'import_source.title' => ['nullable', 'string'],
             'import_source.platform' => ['required_with:import_source', 'string', 'max:50'],
             'import_source.num_iid' => ['required_with:import_source', 'string', 'max:255'],
             'import_source.detail_url' => ['nullable', 'url'],

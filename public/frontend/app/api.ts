@@ -28,7 +28,14 @@ export interface ProductSummary {
   subcategory_slug: string | null;
   image: string | null;
   image_source_url?: string | null;
-  cat_from_api?: string | null;
+  cat_from_api?: {
+    L1_EN?: string;
+    L1_ZH?: string;
+    L2_EN?: string;
+    L2_ZH?: string;
+    L3_EN?: string;
+    L3_ZH?: string;
+  } | null;
   moq: number;
   lead_time: string;
   verified: boolean;
@@ -52,7 +59,14 @@ export interface ProductDetail {
   images: string[];
   description_images: string[];
   image_source_url?: string | null;
-  cat_from_api?: string | null;
+  cat_from_api?: {
+    L1_EN?: string;
+    L1_ZH?: string;
+    L2_EN?: string;
+    L2_ZH?: string;
+    L3_EN?: string;
+    L3_ZH?: string;
+  } | null;
   import_status?: string | null;
   base_price: number;
   moq: number;
@@ -160,6 +174,7 @@ export interface AdminProductPayload {
   description: string;
   image_url?: string;
   import_source?: {
+    title?: string | null;
     platform: string;
     num_iid: string;
     detail_url?: string | null;

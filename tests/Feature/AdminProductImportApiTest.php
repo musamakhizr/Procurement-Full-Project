@@ -41,7 +41,7 @@ class AdminProductImportApiTest extends TestCase
                             ],
                         ],
                     ],
-                    'desc' => '<div><img src="https://cbu01.alicdn.com/img/ibank/desc-1.jpg" /></div>',
+                    'desc' => '{&quot;styleType&quot;:&quot;offer-type-1&quot;,&quot;items&quot;:&quot;1033797201933&quot;,&quot;usemap&quot;:&quot;_sdmap_0&quot;}<div><img src="https://cbu01.alicdn.com/img/ibank/desc-1.jpg" /></div>',
                     'props' => [
                         ['name' => 'Material', 'value' => 'Plush'],
                     ],
@@ -67,6 +67,7 @@ class AdminProductImportApiTest extends TestCase
             ->assertJsonMissingPath('product.images.1')
             ->assertJsonPath('product.variants.0.image_url', 'https://cbu01.alicdn.com/img/ibank/sku-1.jpg')
             ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg')
+            ->assertJsonPath('product.description', 'Material: Plush')
             ->assertJsonPath('product.processed_main_image', null);
     }
 
@@ -75,28 +76,63 @@ class AdminProductImportApiTest extends TestCase
         Storage::fake('public');
         config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
 
+        $redrawCalls = 0;
+        $translateCalls = 0;
+        $descriptionClassifyCalls = 0;
+        $productCategoryCalls = 0;
+
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
-                'body' => [
+            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+                $redrawCalls++;
+
+                return Http::response([
+                    'body' => [
+                        'images' => [
+                            [
+                                'mime_type' => 'image/jpeg',
+                                'data' => base64_encode('processed-main-image'),
+                            ],
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+                $translateCalls++;
+
+                return Http::response([
                     'images' => [
                         [
                             'mime_type' => 'image/jpeg',
-                            'data' => base64_encode('processed-main-image'),
+                            'data' => base64_encode("processed-image-{$translateCalls}"),
                         ],
                     ],
-                ],
-            ], 200),
-            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
-                'images' => [
-                    [
-                        'mime_type' => 'image/jpeg',
-                        'data' => base64_encode('processed-gallery-image'),
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
+                $descriptionClassifyCalls++;
+
+                return Http::response([
+                    'category' => '介绍商品',
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/category/classify' => function () use (&$productCategoryCalls) {
+                $productCategoryCalls++;
+
+                return Http::response([
+                    'items' => [
+                        [
+                            'L1_EN' => 'Toys & Games',
+                            'L1_ZH' => '玩具',
+                            'L2_EN' => 'Educational / STEM Toys',
+                            'L2_ZH' => '益智/科教玩具',
+                            'L3_EN' => 'Science Kits',
+                            'L3_ZH' => 'Imported Toys',
+                            'number' => 0,
+                            'item_name' => 'Imported Plush Toy',
+                        ],
                     ],
-                ],
-            ], 200),
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
-                'category' => 'Imported Toys',
-            ], 200),
+                ], 200);
+            },
         ]);
 
         $admin = User::factory()->create(['role' => 'admin']);
@@ -172,15 +208,255 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame('1688', $product->source_platform);
         $this->assertSame('1032188551822', $product->source_product_id);
         $this->assertSame('Imported Toys', $product->source_category_label);
+        $this->assertSame([
+            'L1_EN' => 'Toys & Games',
+            'L1_ZH' => '玩具',
+            'L2_EN' => 'Educational / STEM Toys',
+            'L2_ZH' => '益智/科教玩具',
+            'L3_EN' => 'Science Kits',
+            'L3_ZH' => 'Imported Toys',
+            'number' => 0,
+            'item_name' => 'Imported Plush Toy',
+        ], $product->cat_from_api);
         $this->assertSame('completed', $product->import_status);
         $this->assertCount(3, $product->productImages);
         $this->assertCount(2, $product->productImages->where('section', 'gallery'));
         $this->assertCount(1, $product->productImages->where('section', 'description'));
         $this->assertCount(1, $product->variants);
         $this->assertSame('香芋紫-15升', $product->variants->first()->label);
+        $this->assertSame(2, $redrawCalls);
+        $this->assertSame(1, $translateCalls);
+        $this->assertSame(1, $descriptionClassifyCalls);
+        $this->assertSame(1, $productCategoryCalls);
+        $this->assertContains(
+            $product->variants->first()?->image_url,
+            $product->productImages->where('section', 'gallery')->pluck('path')->all(),
+        );
 
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
         }
+    }
+
+    public function test_description_images_are_skipped_when_classify_api_marks_them_as_non_product_content(): void
+    {
+        Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+
+        $translateCalls = 0;
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('processed-main-image'),
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+                $translateCalls++;
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode("processed-image-{$translateCalls}"),
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => '其他',
+            ], 200),
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys & Games',
+                        'L1_ZH' => '玩具',
+                        'L2_EN' => 'Educational / STEM Toys',
+                        'L2_ZH' => '益智/科教玩具',
+                        'L3_EN' => 'Science Kits',
+                        'L3_ZH' => 'Imported Toys',
+                        'number' => 0,
+                        'item_name' => 'Imported Plush Toy',
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Imported Toys',
+            'slug' => 'imported-toys',
+            'sort_order' => 1,
+        ]);
+
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/admin/products', [
+            'category_id' => $category->id,
+            'sku' => 'IM-1032188551822',
+            'name' => 'Imported Plush Toy',
+            'description' => 'Imported description',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 100,
+            'is_verified' => true,
+            'is_customizable' => false,
+            'is_active' => true,
+            'base_price' => 5.50,
+            'price_tiers' => [
+                ['min_quantity' => 1, 'max_quantity' => 9, 'price' => 5.50],
+            ],
+            'import_source' => [
+                'platform' => '1688',
+                'num_iid' => '1032188551822',
+                'detail_url' => 'https://detail.1688.com/offer/1032188551822.html',
+                'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'classified_category' => 'Imported Toys',
+                'description' => 'Imported description',
+                'description_html' => '<p>Imported description</p>',
+                'images' => [
+                    'https://cdn.example.com/gallery-1.jpg',
+                ],
+                'description_images' => [
+                    'https://cdn.example.com/desc-1.jpg',
+                ],
+                'variants' => [],
+            ],
+        ])->assertCreated();
+
+        $product = Product::query()->with('productImages')->firstOrFail();
+
+        $this->assertCount(2, $product->productImages);
+        $this->assertCount(0, $product->productImages->where('section', 'description'));
+        $this->assertCount(2, $product->galleryPaths()->all());
+        $this->assertTrue(collect($product->galleryPaths())->every(fn (string $path) => str_starts_with($path, 'products/1/gallery/')));
+        $this->assertSame([], $product->descriptionImagePaths()->all());
+        $this->assertSame(0, $translateCalls);
+    }
+
+    public function test_unique_variant_property_images_are_translated_when_not_already_present_in_item_images(): void
+    {
+        Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+
+        $redrawCalls = 0;
+        $translateCalls = 0;
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+                $redrawCalls++;
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode("processed-redraw-{$redrawCalls}"),
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+                $translateCalls++;
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode("processed-translate-{$translateCalls}"),
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => '介绍商品',
+            ], 200),
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Sports',
+                        'L1_ZH' => '运动',
+                        'L2_EN' => 'Training',
+                        'L2_ZH' => '训练用品',
+                        'L3_EN' => 'Hurdles',
+                        'L3_ZH' => '跨栏',
+                        'number' => 0,
+                        'item_name' => 'Training Hurdle',
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Training Gear',
+            'slug' => 'training-gear',
+            'sort_order' => 1,
+        ]);
+
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/admin/products', [
+            'category_id' => $category->id,
+            'sku' => 'IM-TRAINING-1',
+            'name' => 'Training Hurdle',
+            'description' => 'Imported description',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 100,
+            'is_verified' => true,
+            'is_customizable' => false,
+            'is_active' => true,
+            'base_price' => 5.50,
+            'price_tiers' => [
+                ['min_quantity' => 1, 'max_quantity' => 9, 'price' => 5.50],
+            ],
+            'import_source' => [
+                'platform' => '1688',
+                'num_iid' => '1032147999662',
+                'detail_url' => 'https://detail.1688.com/offer/1032147999662.html',
+                'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'classified_category' => 'Training Gear',
+                'description' => 'Imported description',
+                'description_html' => '<p>Imported description</p>',
+                'images' => [
+                    'https://cdn.example.com/gallery-1.jpg',
+                ],
+                'description_images' => [],
+                'variants' => [
+                    [
+                        'sku_id' => 'sku-1',
+                        'properties_key' => '0:0',
+                        'properties_name' => '0:0:颜色:15cm',
+                        'label' => '15cm',
+                        'image_url' => 'https://cdn.example.com/variant-1.jpg',
+                        'price' => 5.50,
+                        'original_price' => 5.50,
+                        'stock_quantity' => 100,
+                        'option_values' => [
+                            [
+                                'key' => '0:0',
+                                'group_name' => '颜色',
+                                'value' => '15cm',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ])->assertCreated();
+
+        $product = Product::query()->with('productImages', 'variants')->firstOrFail();
+
+        $this->assertSame(2, $redrawCalls);
+        $this->assertSame(1, $translateCalls);
+        $this->assertCount(3, $product->productImages);
+        $this->assertNotNull($product->variants->first()?->image_url);
+        $this->assertTrue(str_starts_with((string) $product->variants->first()?->image_url, 'products/1/gallery/'));
     }
 }

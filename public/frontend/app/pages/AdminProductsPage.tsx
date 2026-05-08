@@ -100,9 +100,10 @@ export function AdminProductsPage() {
     ...(form.imageUrl.trim() ? { image_url: form.imageUrl.trim() } : mode === 'update' ? {} : { image_url: undefined }),
     ...(importedProduct ? {
       import_source: {
-        platform: importedProduct.platform,
-        num_iid: importedProduct.num_iid,
-        detail_url: importedProduct.detail_url,
+          title: importedProduct.title,
+          platform: importedProduct.platform,
+          num_iid: importedProduct.num_iid,
+          detail_url: importedProduct.detail_url,
         image_url: importedProduct.image_url,
         main_image_url: importedProduct.main_image_url ?? importedProduct.image_url,
         classified_category: importedProduct.classified_category,

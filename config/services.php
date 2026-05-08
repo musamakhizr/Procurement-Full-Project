@@ -41,6 +41,7 @@ return [
         'connect_timeout' => (int) env('FOGOT_API_CONNECT_TIMEOUT', 10),
         'retry_times' => (int) env('FOGOT_API_RETRY_TIMES', 0),
         'retry_sleep_ms' => (int) env('FOGOT_API_RETRY_SLEEP_MS', 500),
+        'category_dict_text' => env('FOGOT_CATEGORY_DICT_TEXT', ''),
     ],
 
 ];

@@ -45,6 +45,7 @@ class Product extends Model
         'is_customizable' => 'boolean',
         'is_active' => 'boolean',
         'base_price' => 'decimal:2',
+        'cat_from_api' => 'array',
         'source_payload' => 'array',
         'import_total_tasks' => 'integer',
         'import_completed_tasks' => 'integer',

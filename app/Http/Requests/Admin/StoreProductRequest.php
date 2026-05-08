@@ -20,6 +20,7 @@ class StoreProductRequest extends FormRequest
             'description' => ['required', 'string'],
             'image_url' => ['nullable', 'url'],
             'import_source' => ['nullable', 'array'],
+            'import_source.title' => ['nullable', 'string'],
             'import_source.platform' => ['required_with:import_source', 'string', 'max:50'],
             'import_source.num_iid' => ['required_with:import_source', 'string', 'max:255'],
             'import_source.detail_url' => ['nullable', 'url'],

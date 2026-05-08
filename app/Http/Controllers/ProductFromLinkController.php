@@ -421,8 +421,8 @@ class ProductFromLinkController extends Controller
 
     private function buildDescription(array $item): string
     {
-        $shortDescription = trim(strip_tags((string) ($item['desc_short'] ?? '')));
-        $htmlDescription = trim(strip_tags((string) ($item['desc'] ?? '')));
+        $shortDescription = $this->sanitizeDescriptionText((string) ($item['desc_short'] ?? ''));
+        $htmlDescription = $this->sanitizeDescriptionText((string) ($item['desc'] ?? ''));
 
         $propertyLines = collect($item['props'] ?? [])
             ->filter(fn ($prop) => is_array($prop) && filled($prop['name'] ?? null) && filled($prop['value'] ?? null))
@@ -438,6 +438,36 @@ class ProductFromLinkController extends Controller
             ->filter(fn ($value) => is_string($value) && trim($value) !== '')
             ->unique()
             ->implode(PHP_EOL.PHP_EOL);
+    }
+
+    private function sanitizeDescriptionText(string $value): string
+    {
+        $decoded = html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return collect(preg_split('/\R+/u', $decoded) ?: [])
+            ->map(fn (string $line) => trim(preg_replace('/\s+/u', ' ', $line) ?? ''))
+            ->filter(fn (string $line) => $line !== '' && ! $this->isNoiseDescriptionLine($line))
+            ->unique()
+            ->implode(PHP_EOL);
+    }
+
+    private function isNoiseDescriptionLine(string $line): bool
+    {
+        $normalizedLine = Str::lower($line);
+
+        if (
+            str_contains($normalizedLine, 'styletype')
+            || str_contains($normalizedLine, 'usemap')
+            || str_contains($normalizedLine, '&quot;')
+        ) {
+            return true;
+        }
+
+        if (preg_match('/^\{.*\}$/u', $line) === 1) {
+            return true;
+        }
+
+        return false;
     }
 
     private function normalizeUrl(null|string $value): ?string
