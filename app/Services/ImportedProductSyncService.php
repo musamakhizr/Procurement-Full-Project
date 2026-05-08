@@ -11,6 +11,7 @@ use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class ImportedProductSyncService
@@ -59,6 +60,8 @@ class ImportedProductSyncService
 
         $jobs = [];
         $galleryOffset = $mainImageUrl !== null ? 1 : 0;
+        $redrawGalleryImageUrls = array_slice($galleryImageUrls, 0, 4);
+        $remoteGalleryImageUrls = array_slice($galleryImageUrls, 4);
 
         if ($this->shouldClassifyProductCategory($product)) {
             $jobs[] = new ClassifyImportedProductCategory($product->getKey());
@@ -68,14 +71,19 @@ class ImportedProductSyncService
             $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'description', $index, 'translate');
         }
 
-        $variantOffset = $galleryOffset + count($galleryImageUrls);
+        $redrawGalleryOffset = $galleryOffset + count($redrawGalleryImageUrls);
+        $variantOffset = $redrawGalleryOffset + count($remoteGalleryImageUrls);
 
         foreach ($variantImageUrls as $index => $imageUrl) {
             $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'gallery', $index + $variantOffset, 'translate');
         }
 
-        foreach ($galleryImageUrls as $index => $imageUrl) {
+        foreach ($redrawGalleryImageUrls as $index => $imageUrl) {
             $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'gallery', $index + $galleryOffset, 'redraw');
+        }
+
+        foreach ($remoteGalleryImageUrls as $index => $imageUrl) {
+            $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'gallery', $index + $redrawGalleryOffset, 'remote');
         }
 
         if ($mainImageUrl !== null) {
@@ -112,19 +120,26 @@ class ImportedProductSyncService
         }
 
         $galleryOffset = $mainImageUrl !== null ? 1 : 0;
+        $redrawGalleryImageUrls = array_slice($galleryImageUrls, 0, 4);
+        $remoteGalleryImageUrls = array_slice($galleryImageUrls, 4);
 
         foreach ($descriptionImageUrls as $index => $imageUrl) {
             $this->processDetailImage($product, $imageUrl, 'description', $index, 'translate');
         }
 
-        $variantOffset = $galleryOffset + count($galleryImageUrls);
+        $redrawGalleryOffset = $galleryOffset + count($redrawGalleryImageUrls);
+        $variantOffset = $redrawGalleryOffset + count($remoteGalleryImageUrls);
 
         foreach ($variantImageUrls as $index => $imageUrl) {
             $this->processDetailImage($product, $imageUrl, 'gallery', $index + $variantOffset, 'translate');
         }
 
-        foreach ($galleryImageUrls as $index => $imageUrl) {
+        foreach ($redrawGalleryImageUrls as $index => $imageUrl) {
             $this->processDetailImage($product, $imageUrl, 'gallery', $index + $galleryOffset, 'redraw');
+        }
+
+        foreach ($remoteGalleryImageUrls as $index => $imageUrl) {
+            $this->processDetailImage($product, $imageUrl, 'gallery', $index + $redrawGalleryOffset, 'remote');
         }
 
         if ($mainImageUrl !== null) {
@@ -163,6 +178,7 @@ class ImportedProductSyncService
 
             $processedImage = match ($processor) {
                 'redraw' => $this->fogotProductMediaService->redrawImage($imageUrl),
+                'remote' => null,
                 default => $this->fogotProductMediaService->translateImage($imageUrl)[0] ?? null,
             };
 
@@ -530,7 +546,7 @@ class ImportedProductSyncService
 
         return collect($value)
             ->map(fn ($url) => $this->normalizeUrlValue($url))
-            ->filter()
+            ->filter(fn ($url) => is_string($url) && ! $this->shouldIgnoreImageUrl($url))
             ->unique()
             ->values()
             ->all();
@@ -549,6 +565,18 @@ class ImportedProductSyncService
         }
 
         return filter_var($trimmed, FILTER_VALIDATE_URL) ? $trimmed : null;
+    }
+
+    private function shouldIgnoreImageUrl(string $url): bool
+    {
+        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
+        $path = Str::lower((string) parse_url($url, PHP_URL_PATH));
+
+        if ($host === 'www.o0b.cn' && $path === '/i.php') {
+            return true;
+        }
+
+        return Str::endsWith($path, '/spaceball.gif');
     }
 
     private function normalizeDecimal(mixed $value): ?float

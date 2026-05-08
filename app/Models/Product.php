@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class Product extends Model
 {
@@ -107,7 +108,7 @@ class Product extends Model
             data_get($this->source_payload, 'image_url'),
         ])
             ->merge(data_get($this->source_payload, 'images', []))
-            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
             ->reject(fn (string $path) => $variantSourceImages->contains($path))
             ->unique()
             ->values();
@@ -121,7 +122,7 @@ class Product extends Model
     public function descriptionImagePaths(): Collection
     {
         $sourceDescriptionImages = collect(data_get($this->source_payload, 'description_images', []))
-            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
             ->values();
 
         return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
@@ -151,6 +152,10 @@ class Product extends Model
                 $sourceUrl = $image->source_url;
 
                 if (! is_string($path) || $path === '') {
+                    continue;
+                }
+
+                if ($this->shouldIgnoreImageUrl($sourceUrl) || $this->shouldIgnoreImageUrl($path)) {
                     continue;
                 }
 
@@ -205,5 +210,21 @@ class Product extends Model
             ->pluck('image_url')
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values();
+    }
+
+    private function shouldIgnoreImageUrl(?string $url): bool
+    {
+        if (! is_string($url) || trim($url) === '') {
+            return false;
+        }
+
+        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
+        $path = Str::lower((string) parse_url($url, PHP_URL_PATH));
+
+        if ($host === 'www.o0b.cn' && $path === '/i.php') {
+            return true;
+        }
+
+        return Str::endsWith($path, '/spaceball.gif');
     }
 }

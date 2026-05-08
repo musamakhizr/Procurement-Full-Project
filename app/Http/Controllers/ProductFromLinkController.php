@@ -414,7 +414,12 @@ class ProductFromLinkController extends Controller
 
     private function shouldIgnoreImageUrl(string $url): bool
     {
+        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
         $path = Str::lower((string) parse_url($url, PHP_URL_PATH));
+
+        if ($host === 'www.o0b.cn' && $path === '/i.php') {
+            return true;
+        }
 
         return Str::endsWith($path, '/spaceball.gif');
     }

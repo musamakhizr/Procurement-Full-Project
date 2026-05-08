@@ -41,7 +41,7 @@ class AdminProductImportApiTest extends TestCase
                             ],
                         ],
                     ],
-                    'desc' => '{&quot;styleType&quot;:&quot;offer-type-1&quot;,&quot;items&quot;:&quot;1033797201933&quot;,&quot;usemap&quot;:&quot;_sdmap_0&quot;}<div><img src="https://cbu01.alicdn.com/img/ibank/desc-1.jpg" /></div>',
+                    'desc' => '{&quot;styleType&quot;:&quot;offer-type-1&quot;,&quot;items&quot;:&quot;1033797201933&quot;,&quot;usemap&quot;:&quot;_sdmap_0&quot;}<div><img src="https://cbu01.alicdn.com/img/ibank/desc-1.jpg" /><img src="https://www.o0b.cn/i.php?t.png&rid=gw-3.69fe32d298ef4&p=1736835377&k=t7100&t=1778266837" /></div>',
                     'props' => [
                         ['name' => 'Material', 'value' => 'Plush'],
                     ],
@@ -67,6 +67,7 @@ class AdminProductImportApiTest extends TestCase
             ->assertJsonMissingPath('product.images.1')
             ->assertJsonPath('product.variants.0.image_url', 'https://cbu01.alicdn.com/img/ibank/sku-1.jpg')
             ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg')
+            ->assertJsonMissingPath('product.description_images.1')
             ->assertJsonPath('product.description', 'Material: Plush')
             ->assertJsonPath('product.processed_main_image', null);
     }
@@ -458,5 +459,159 @@ class AdminProductImportApiTest extends TestCase
         $this->assertCount(3, $product->productImages);
         $this->assertNotNull($product->variants->first()?->image_url);
         $this->assertTrue(str_starts_with((string) $product->variants->first()?->image_url, 'products/1/gallery/'));
+    }
+
+    public function test_only_first_four_gallery_images_plus_main_use_redraw_api(): void
+    {
+        Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+
+        $redrawCalls = 0;
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+                $redrawCalls++;
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode("processed-redraw-{$redrawCalls}"),
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys & Games',
+                        'L1_ZH' => '玩具',
+                        'L2_EN' => 'Educational / STEM Toys',
+                        'L2_ZH' => '益智/科教玩具',
+                        'L3_EN' => 'Science Kits',
+                        'L3_ZH' => '科学实验套装',
+                        'number' => 0,
+                        'item_name' => 'Training Hurdle',
+                    ],
+                ],
+            ], 200),
+            'https://cdn.example.com/*' => Http::response('raw-image', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Training Gear',
+            'slug' => 'training-gear',
+            'sort_order' => 1,
+        ]);
+
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $galleryImages = [
+            'https://cdn.example.com/gallery-1.jpg',
+            'https://cdn.example.com/gallery-2.jpg',
+            'https://cdn.example.com/gallery-3.jpg',
+            'https://cdn.example.com/gallery-4.jpg',
+            'https://cdn.example.com/gallery-5.jpg',
+            'https://cdn.example.com/gallery-6.jpg',
+        ];
+
+        $this->withToken($token)->postJson('/api/admin/products', [
+            'category_id' => $category->id,
+            'sku' => 'IM-REDRAW-4',
+            'name' => 'Training Hurdle',
+            'description' => 'Imported description',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 100,
+            'is_verified' => true,
+            'is_customizable' => false,
+            'is_active' => true,
+            'base_price' => 5.50,
+            'price_tiers' => [
+                ['min_quantity' => 1, 'max_quantity' => 9, 'price' => 5.50],
+            ],
+            'import_source' => [
+                'platform' => '1688',
+                'num_iid' => '609733994005',
+                'detail_url' => 'https://detail.1688.com/offer/609733994005.html',
+                'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'classified_category' => null,
+                'description' => 'Imported description',
+                'description_html' => '<p>Imported description</p>',
+                'images' => $galleryImages,
+                'description_images' => [],
+                'variants' => [],
+            ],
+        ])->assertCreated();
+
+        $product = Product::query()->with('productImages')->firstOrFail();
+
+        $this->assertSame(5, $redrawCalls);
+        $this->assertCount(7, $product->productImages);
+        $this->assertContains('https://cdn.example.com/gallery-5.jpg', $product->productImages->pluck('source_url')->all());
+        $this->assertContains('https://cdn.example.com/gallery-6.jpg', $product->productImages->pluck('source_url')->all());
+
+        foreach ($product->productImages as $image) {
+            Storage::disk('public')->assertExists($image->path);
+        }
+    }
+
+    public function test_tracking_pixel_images_are_hidden_from_existing_product_description_images(): void
+    {
+        $category = Category::query()->create([
+            'name' => 'Pixel Tests',
+            'slug' => 'pixel-tests',
+            'sort_order' => 1,
+        ]);
+
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'PX-1',
+            'name' => 'Pixel Filter Product',
+            'description' => 'Test',
+            'image_url' => 'products/1/gallery/main.jpg',
+            'base_price' => 1,
+            'moq' => 1,
+            'lead_time_min_days' => 1,
+            'lead_time_max_days' => 2,
+            'stock_quantity' => 1,
+            'is_verified' => true,
+            'is_customizable' => false,
+            'is_active' => true,
+            'source_payload' => [
+                'description_images' => [
+                    'https://cbu01.alicdn.com/img/ibank/desc-1.jpg',
+                    'https://www.o0b.cn/i.php?t.png&rid=gw-3.69fe32d298ef4&p=1736835377&k=t7100&t=1778266837',
+                ],
+            ],
+        ]);
+
+        $product->productImages()->createMany([
+            [
+                'path' => 'products/1/description/01-real.jpg',
+                'source_url' => 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg',
+                'section' => 'description',
+                'sort_order' => 0,
+                'is_primary' => false,
+            ],
+            [
+                'path' => 'products/1/description/02-pixel.jpg',
+                'source_url' => 'https://www.o0b.cn/i.php?t.png&rid=gw-4.69fe3bc7891c4&p=767692421&k=t7100&t=1778269134',
+                'section' => 'description',
+                'sort_order' => 1,
+                'is_primary' => false,
+            ],
+        ]);
+
+        $product->load('productImages');
+
+        $this->assertSame([
+            'products/1/description/01-real.jpg',
+        ], $product->descriptionImagePaths()->all());
     }
 }
