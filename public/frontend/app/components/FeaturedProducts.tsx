@@ -100,18 +100,8 @@ export function FeaturedProducts() {
                 </div>
 
                 <div className="mb-4">
-                  {product.price_tier_1 && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 text-xs">{product.price_tier_1.range}</span>
-                      <span className="font-bold text-slate-900">¥{product.price_tier_1.price.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {product.price_tier_2 && product.price_tier_2.price !== product.price_tier_1?.price && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 text-xs">{product.price_tier_2.range}</span>
-                      <span className="font-bold text-[#4F6BFF]">¥{product.price_tier_2.price.toFixed(2)}</span>
-                    </div>
-                  )}
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('product.unitPrice')}</div>
+                  <div className="font-bold text-slate-900 text-2xl">¥{product.unit_price.toFixed(2)}</div>
                 </div>
 
                 <button

@@ -282,21 +282,8 @@ export function MarketplacePage() {
                   </div>
 
                   <div className="mb-4">
-                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{t('marketplace.businessPricing')}</div>
-                    <div className="space-y-1">
-                      {product.price_tier_1 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-600">{product.price_tier_1.range}</span>
-                          <span className="font-bold text-slate-900">¥{product.price_tier_1.price.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {product.price_tier_2 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-600">{product.price_tier_2.range}</span>
-                          <span className="font-bold text-[#4F6BFF]">¥{product.price_tier_2.price.toFixed(2)}</span>
-                        </div>
-                      )}
-                    </div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('product.unitPrice')}</div>
+                    <div className="font-bold text-slate-900 text-2xl">¥{product.unit_price.toFixed(2)}</div>
                   </div>
 
                   <div className="flex gap-2">

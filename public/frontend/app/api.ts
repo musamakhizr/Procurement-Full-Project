@@ -36,6 +36,7 @@ export interface ProductSummary {
   stock_quantity: number;
   status: string;
   last_updated: string | null;
+  unit_price: number;
   base_price_range: string;
   price_tier_1: { range: string; price: number } | null;
   price_tier_2: { range: string; price: number } | null;

@@ -10,6 +10,27 @@ use Throwable;
 class FogotProductMediaService
 {
     /**
+     * @return array{mime_type:string,data:string,preview_url:string,source_url:string}|null
+     */
+    public function redrawMainImage(string $imageUrl): ?array
+    {
+        return $this->safeProcessMainImage($imageUrl);
+    }
+
+    /**
+     * @return array<int, array{mime_type:string,data:string,preview_url:string,source_url:string}>
+     */
+    public function translateImage(string $imageUrl): array
+    {
+        return $this->safeProcessDetailImages([$imageUrl]);
+    }
+
+    public function classifyImage(string $imageUrl): ?string
+    {
+        return $this->safeClassifyCategory($imageUrl);
+    }
+
+    /**
      * @param  array<int, string>  $galleryImageUrls
      * @param  array<int, string>  $descriptionImageUrls
      * @return array{

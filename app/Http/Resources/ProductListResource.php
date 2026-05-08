@@ -30,6 +30,7 @@ class ProductListResource extends JsonResource
             'stock_quantity' => $this->stock_quantity,
             'status' => $this->stock_quantity <= 1000 ? 'low-stock' : 'active',
             'last_updated' => $this->updated_at?->toDateString(),
+            'unit_price' => $tierOne ? (float) $tierOne->price : (float) $this->base_price,
             'base_price_range' => $this->price_range,
             'price_tier_1' => $tierOne ? ['range' => $tierOne->label, 'price' => (float) $tierOne->price] : null,
             'price_tier_2' => $tierTwo ? ['range' => $tierTwo->label, 'price' => (float) $tierTwo->price] : null,

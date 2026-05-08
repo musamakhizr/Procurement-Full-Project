@@ -2,9 +2,13 @@
 
 namespace App\Services;
 
+use App\Jobs\ClassifyImportedProductCategory;
+use App\Jobs\ProcessImportedProductDetailImage;
+use App\Jobs\ProcessImportedProductMainImage;
 use App\Jobs\ProcessImportedProductMedia;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -26,6 +30,8 @@ class ImportedProductSyncService
             'import_status' => 'pending',
             'import_error' => null,
             'source_payload' => $this->sanitizeImportSource($importSource),
+            'import_total_tasks' => 0,
+            'import_completed_tasks' => 0,
         ])->save();
 
         if (app()->runningUnitTests()) {
@@ -37,62 +43,129 @@ class ImportedProductSyncService
         ProcessImportedProductMedia::dispatch($product->getKey());
     }
 
-    public function process(Product $product): void
+    public function dispatchQueuedTasks(Product $product): void
     {
-        $importSource = $product->source_payload;
+        ['main_image_url' => $mainImageUrl, 'gallery_images' => $galleryImageUrls, 'description_images' => $descriptionImageUrls, 'total_tasks' => $totalTasks] = $this->initializeProcessing($product);
 
-        if (! is_array($importSource) || $importSource === []) {
-            return;
-        }
-
-        $product->forceFill([
-            'import_status' => 'processing',
-            'import_error' => null,
-        ])->save();
-
-        try {
-            $mainImageUrl = $this->normalizeUrlValue(data_get($importSource, 'main_image_url'))
-                ?? $this->normalizeUrlValue(data_get($importSource, 'image_url'));
-            $galleryImageUrls = $this->normalizeUrlArray(data_get($importSource, 'images', []));
-            $descriptionImageUrls = $this->normalizeUrlArray(data_get($importSource, 'description_images', []));
-
-            $processedMedia = $this->fogotProductMediaService->processImportPreview($mainImageUrl, $galleryImageUrls, $descriptionImageUrls);
-
-            $galleryImages = $this->buildMixedImages(
-                $mainImageUrl,
-                $galleryImageUrls,
-                $processedMedia['main_image'],
-                $processedMedia['gallery_images'],
-            );
-            $descriptionImages = $this->buildMixedImages(
-                null,
-                $descriptionImageUrls,
-                null,
-                $processedMedia['description_images'],
-            );
-
-            if ($galleryImages !== [] || $descriptionImages !== []) {
-                $this->productImportImageService->syncMixedProductImages($product, $galleryImages, $descriptionImages);
-                $product->load('productImages', 'variants');
-                $this->syncVariantStoredImages($product);
-            }
-
+        if ($totalTasks === 0) {
             $product->forceFill([
-                'source_image_url' => $mainImageUrl ?? $product->source_image_url,
-                'cat_from_api' => $processedMedia['category'] ?? $product->cat_from_api,
                 'import_status' => 'completed',
                 'import_error' => null,
             ])->save();
-        } catch (Throwable $exception) {
-            Log::warning('Imported product media processing failed.', [
-                'product_id' => $product->getKey(),
-                'error' => $exception->getMessage(),
-            ]);
 
+            return;
+        }
+
+        if ($mainImageUrl !== null) {
+            ProcessImportedProductMainImage::dispatch($product->getKey(), $mainImageUrl);
+        }
+
+        $galleryOffset = $mainImageUrl !== null ? 1 : 0;
+
+        foreach ($galleryImageUrls as $index => $imageUrl) {
+            ProcessImportedProductDetailImage::dispatch($product->getKey(), $imageUrl, 'gallery', $index + $galleryOffset);
+        }
+
+        foreach ($descriptionImageUrls as $index => $imageUrl) {
+            ProcessImportedProductDetailImage::dispatch($product->getKey(), $imageUrl, 'description', $index);
+        }
+
+        if ($mainImageUrl !== null) {
+            ClassifyImportedProductCategory::dispatch($product->getKey(), $mainImageUrl);
+        }
+    }
+
+    public function process(Product $product): void
+    {
+        ['main_image_url' => $mainImageUrl, 'gallery_images' => $galleryImageUrls, 'description_images' => $descriptionImageUrls, 'total_tasks' => $totalTasks] = $this->initializeProcessing($product);
+
+        if ($totalTasks === 0) {
             $product->forceFill([
-                'import_status' => 'failed',
-                'import_error' => $exception->getMessage(),
+                'import_status' => 'completed',
+                'import_error' => null,
             ])->save();
+
+            return;
+        }
+
+        if ($mainImageUrl !== null) {
+            $this->processMainImage($product, $mainImageUrl);
+        }
+
+        $galleryOffset = $mainImageUrl !== null ? 1 : 0;
+
+        foreach ($galleryImageUrls as $index => $imageUrl) {
+            $this->processDetailImage($product, $imageUrl, 'gallery', $index + $galleryOffset);
+        }
+
+        foreach ($descriptionImageUrls as $index => $imageUrl) {
+            $this->processDetailImage($product, $imageUrl, 'description', $index);
+        }
+
+        if ($mainImageUrl !== null) {
+            $this->classifyCategory($product, $mainImageUrl);
+        }
+    }
+
+    public function processMainImage(Product $product, string $imageUrl): void
+    {
+        try {
+            $processedImage = $this->fogotProductMediaService->redrawMainImage($imageUrl);
+
+            $stored = $processedImage !== null
+                ? $this->productImportImageService->appendProcessedImage($product, [
+                    'mime_type' => $processedImage['mime_type'],
+                    'data' => $processedImage['data'],
+                    'source_url' => $processedImage['source_url'],
+                ], 0, 'gallery')
+                : $this->productImportImageService->appendRemoteImage($product, $imageUrl, 0, 'gallery');
+
+            $this->markImportTaskFinished($product, $stored ? null : "Unable to store main image [{$imageUrl}].");
+        } catch (Throwable $exception) {
+            $this->markImportTaskFinished($product, "Main image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+            $this->logTaskWarning('Imported main image processing failed.', $product, $imageUrl, $exception);
+        }
+    }
+
+    public function processDetailImage(Product $product, string $imageUrl, string $section, int $sortOrder): void
+    {
+        try {
+            $processedImages = $this->fogotProductMediaService->translateImage($imageUrl);
+            $processedImage = $processedImages[0] ?? null;
+
+            $stored = $processedImage !== null
+                ? $this->productImportImageService->appendProcessedImage($product, [
+                    'mime_type' => $processedImage['mime_type'],
+                    'data' => $processedImage['data'],
+                    'source_url' => $processedImage['source_url'],
+                ], $sortOrder, $section)
+                : $this->productImportImageService->appendRemoteImage($product, $imageUrl, $sortOrder, $section);
+
+            $this->markImportTaskFinished($product, $stored ? null : "Unable to store {$section} image [{$imageUrl}].");
+        } catch (Throwable $exception) {
+            $this->markImportTaskFinished($product, ucfirst($section)." image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+            $this->logTaskWarning('Imported detail image processing failed.', $product, $imageUrl, $exception, [
+                'section' => $section,
+                'sort_order' => $sortOrder,
+            ]);
+        }
+    }
+
+    public function classifyCategory(Product $product, string $imageUrl): void
+    {
+        try {
+            $category = $this->fogotProductMediaService->classifyImage($imageUrl);
+
+            if ($category !== null) {
+                $product->forceFill([
+                    'cat_from_api' => $category,
+                ])->save();
+            }
+
+            $this->markImportTaskFinished($product, $category !== null ? null : "Category classification returned empty for [{$imageUrl}].");
+        } catch (Throwable $exception) {
+            $this->markImportTaskFinished($product, "Category classification failed for [{$imageUrl}]: {$exception->getMessage()}");
+            $this->logTaskWarning('Imported category classification failed.', $product, $imageUrl, $exception);
         }
     }
 
@@ -146,53 +219,98 @@ class ImportedProductSyncService
     }
 
     /**
-     * @param  array<int, string>  $rawUrls
-     * @param  array{mime_type:string,data:string,preview_url:string,source_url:string}|null  $processedMainImage
-     * @param  array<int, array{mime_type:string,data:string,preview_url:string,source_url:string}>  $processedImages
-     * @return array<int, array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}>
+     * @return array{
+     *   main_image_url:?string,
+     *   gallery_images:array<int, string>,
+     *   description_images:array<int, string>,
+     *   total_tasks:int
+     * }
      */
-    private function buildMixedImages(?string $mainImageUrl, array $rawUrls, ?array $processedMainImage, array $processedImages): array
+    private function initializeProcessing(Product $product): array
     {
-        $mixedImages = [];
-        $processedBySource = [];
+        $importSource = $product->source_payload;
 
-        if ($processedMainImage !== null) {
-            $mixedImages[] = [
-                'type' => 'processed',
-                'mime_type' => $processedMainImage['mime_type'],
-                'data' => $processedMainImage['data'],
-                'source_url' => $processedMainImage['source_url'],
-            ];
-            $processedBySource[$processedMainImage['source_url']] = true;
-        } elseif ($mainImageUrl !== null) {
-            $mixedImages[] = [
-                'type' => 'remote',
-                'url' => $mainImageUrl,
+        if (! is_array($importSource) || $importSource === []) {
+            return [
+                'main_image_url' => null,
+                'gallery_images' => [],
+                'description_images' => [],
+                'total_tasks' => 0,
             ];
         }
 
-        foreach ($processedImages as $processedImage) {
-            $sourceUrl = $processedImage['source_url'];
+        $mainImageUrl = $this->normalizeUrlValue(data_get($importSource, 'main_image_url'))
+            ?? $this->normalizeUrlValue(data_get($importSource, 'image_url'));
+        $galleryImageUrls = $this->normalizeUrlArray(data_get($importSource, 'images', []));
+        $descriptionImageUrls = $this->normalizeUrlArray(data_get($importSource, 'description_images', []));
 
-            $mixedImages[] = [
-                'type' => 'processed',
-                'mime_type' => $processedImage['mime_type'],
-                'data' => $processedImage['data'],
-                'source_url' => $sourceUrl,
-            ];
-            $processedBySource[$sourceUrl] = true;
+        if ($mainImageUrl !== null) {
+            $galleryImageUrls = array_values(array_filter(
+                $galleryImageUrls,
+                fn (string $url) => $url !== $mainImageUrl,
+            ));
         }
 
-        foreach ($rawUrls as $url) {
-            if (! isset($processedBySource[$url])) {
-                $mixedImages[] = [
-                    'type' => 'remote',
-                    'url' => $url,
-                ];
+        $totalTasks = count($galleryImageUrls) + count($descriptionImageUrls) + ($mainImageUrl !== null ? 2 : 0);
+
+        $this->productImportImageService->resetProductImages($product);
+
+        $product->forceFill([
+            'import_status' => 'processing',
+            'import_error' => null,
+            'import_total_tasks' => $totalTasks,
+            'import_completed_tasks' => 0,
+            'cat_from_api' => null,
+        ])->save();
+
+        return [
+            'main_image_url' => $mainImageUrl,
+            'gallery_images' => $galleryImageUrls,
+            'description_images' => $descriptionImageUrls,
+            'total_tasks' => $totalTasks,
+        ];
+    }
+
+    private function markImportTaskFinished(Product $product, ?string $error = null): void
+    {
+        DB::transaction(function () use ($product, $error) {
+            /** @var Product $freshProduct */
+            $freshProduct = Product::query()->lockForUpdate()->findOrFail($product->getKey());
+
+            $completedTasks = (int) ($freshProduct->import_completed_tasks ?? 0) + 1;
+            $existingError = $freshProduct->import_error;
+            $combinedError = $existingError;
+
+            if ($error !== null && trim($error) !== '') {
+                $combinedError = trim(implode("\n", array_filter([
+                    is_string($existingError) && trim($existingError) !== '' ? trim($existingError) : null,
+                    trim($error),
+                ])));
             }
-        }
 
-        return array_values($mixedImages);
+            $freshProduct->forceFill([
+                'import_completed_tasks' => $completedTasks,
+                'import_error' => $combinedError !== '' ? $combinedError : null,
+            ])->save();
+
+            if ($completedTasks >= (int) ($freshProduct->import_total_tasks ?? 0)) {
+                $this->finalizeImport($freshProduct);
+            }
+        });
+    }
+
+    private function finalizeImport(Product $product): void
+    {
+        $product->load('productImages', 'variants');
+        $this->syncVariantStoredImages($product);
+
+        $status = $product->productImages->isEmpty() && filled($product->import_error)
+            ? 'failed'
+            : 'completed';
+
+        $product->forceFill([
+            'import_status' => $status,
+        ])->save();
     }
 
     /**
@@ -292,5 +410,22 @@ class ImportedProductSyncService
         }
 
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     */
+    private function logTaskWarning(string $message, Product $product, string $imageUrl, Throwable $exception, array $extra = []): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        Log::warning($message, [
+            'product_id' => $product->getKey(),
+            'image_url' => $imageUrl,
+            'error' => $exception->getMessage(),
+            ...$extra,
+        ]);
     }
 }

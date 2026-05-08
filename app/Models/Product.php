@@ -27,6 +27,8 @@ class Product extends Model
         'cat_from_api',
         'import_status',
         'import_error',
+        'import_total_tasks',
+        'import_completed_tasks',
         'source_payload',
         'moq',
         'lead_time_min_days',
@@ -44,6 +46,8 @@ class Product extends Model
         'is_active' => 'boolean',
         'base_price' => 'decimal:2',
         'source_payload' => 'array',
+        'import_total_tasks' => 'integer',
+        'import_completed_tasks' => 'integer',
     ];
 
     public function category(): BelongsTo
@@ -95,22 +99,16 @@ class Product extends Model
      */
     public function galleryPaths(): Collection
     {
-        if ($this->relationLoaded('productImages') && $this->productImages->where('section', 'gallery')->isNotEmpty()) {
-            return $this->productImages
-                ->where('section', 'gallery')
-                ->pluck('path')
-                ->filter(fn ($path) => is_string($path) && $path !== '')
-                ->values();
-        }
-
-        $sourceGalleryImages = collect(data_get($this->source_payload, 'images', []))
-            ->filter(fn ($path) => is_string($path) && $path !== '');
-
-        return collect([$this->image_url])
-            ->merge($sourceGalleryImages)
+        $sourceGalleryImages = collect([
+            data_get($this->source_payload, 'main_image_url'),
+            data_get($this->source_payload, 'image_url'),
+        ])
+            ->merge(data_get($this->source_payload, 'images', []))
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->unique()
             ->values();
+
+        return $this->mergedImagePathsForSection('gallery', $sourceGalleryImages, $this->image_url);
     }
 
     /**
@@ -118,15 +116,43 @@ class Product extends Model
      */
     public function descriptionImagePaths(): Collection
     {
-        if ($this->relationLoaded('productImages') && $this->productImages->where('section', 'description')->isNotEmpty()) {
-            return $this->productImages
-                ->where('section', 'description')
-                ->pluck('path')
-                ->filter(fn ($path) => is_string($path) && $path !== '')
-                ->values();
+        $sourceDescriptionImages = collect(data_get($this->source_payload, 'description_images', []))
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->values();
+
+        return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
+    }
+
+    /**
+     * @param  Collection<int, string>  $sourcePaths
+     */
+    private function mergedImagePathsForSection(string $section, Collection $sourcePaths, ?string $fallbackPrimaryPath = null): Collection
+    {
+        $basePaths = $sourcePaths->values()->all();
+
+        if ($fallbackPrimaryPath !== null && $section === 'gallery' && $basePaths === []) {
+            $basePaths[] = $fallbackPrimaryPath;
         }
 
-        return collect(data_get($this->source_payload, 'description_images', []))
+        if ($this->relationLoaded('productImages')) {
+            $storedImages = $this->productImages
+                ->where('section', $section)
+                ->sortBy('sort_order')
+                ->values();
+
+            foreach ($storedImages as $image) {
+                $path = $image->path;
+
+                if (! is_string($path) || $path === '') {
+                    continue;
+                }
+
+                $sortOrder = max((int) $image->sort_order, 0);
+                $basePaths[$sortOrder] = $path;
+            }
+        }
+
+        return collect($basePaths)
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values();
     }

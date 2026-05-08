@@ -12,6 +12,49 @@ use RuntimeException;
 
 class ProductImportImageService
 {
+    public function resetProductImages(Product $product): void
+    {
+        $fallbackImageUrl = $product->source_image_url
+            ?? data_get($product->source_payload, 'main_image_url')
+            ?? data_get($product->source_payload, 'image_url');
+
+        $this->deleteExistingImages($product);
+        $product->productImages()->delete();
+
+        $product->forceFill([
+            'image_url' => $fallbackImageUrl,
+        ])->save();
+    }
+
+    /**
+     * @param  array{mime_type:string,data:string,source_url:?string}  $image
+     */
+    public function appendProcessedImage(Product $product, array $image, int $index, string $section): bool
+    {
+        $storedImage = $this->storeProcessedImage($product, $image, $index, $section);
+
+        if ($storedImage === null) {
+            return false;
+        }
+
+        $this->persistStoredImage($product, $storedImage);
+
+        return true;
+    }
+
+    public function appendRemoteImage(Product $product, string $url, int $index, string $section): bool
+    {
+        $storedImage = $this->downloadImage($product, $url, $index, $section);
+
+        if ($storedImage === null) {
+            return false;
+        }
+
+        $this->persistStoredImage($product, $storedImage);
+
+        return true;
+    }
+
     /**
      * @param  array<int, array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}>  $galleryImages
      * @param  array<int, array{type:string,mime_type?:string,data?:string,source_url?:string,url?:string}>  $descriptionImages
@@ -168,6 +211,48 @@ class ProductImportImageService
         if ($paths !== []) {
             Storage::disk('public')->delete($paths);
         }
+    }
+
+    /**
+     * @param  array{path:string,source_url:?string,section:string,sort_order:int,is_primary:bool}  $storedImage
+     */
+    private function persistStoredImage(Product $product, array $storedImage): void
+    {
+        $existingImage = $product->productImages()
+            ->where('section', $storedImage['section'])
+            ->where('sort_order', $storedImage['sort_order'])
+            ->first();
+
+        if ($existingImage && $existingImage->path !== $storedImage['path']) {
+            Storage::disk('public')->delete($existingImage->path);
+        }
+
+        $product->productImages()->updateOrCreate(
+            [
+                'section' => $storedImage['section'],
+                'sort_order' => $storedImage['sort_order'],
+            ],
+            $storedImage,
+        );
+
+        $this->refreshPrimaryImage($product);
+    }
+
+    private function refreshPrimaryImage(Product $product): void
+    {
+        $primaryImage = $product->productImages()
+            ->orderByRaw("case when section = 'gallery' then 0 else 1 end")
+            ->orderBy('sort_order')
+            ->first();
+
+        if (! $primaryImage) {
+            return;
+        }
+
+        $product->forceFill([
+            'image_url' => $primaryImage->path,
+            'source_image_url' => $primaryImage->source_url ?? $product->source_image_url,
+        ])->save();
     }
 
     /**

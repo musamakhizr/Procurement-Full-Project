@@ -8,11 +8,11 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 
-class ProcessImportedProductMedia implements ShouldQueue
+class ProcessImportedProductDetailImage implements ShouldQueue
 {
     use Dispatchable, Queueable;
 
-    public int $timeout = 120;
+    public int $timeout = 300;
 
     public int $tries = 1;
 
@@ -20,6 +20,9 @@ class ProcessImportedProductMedia implements ShouldQueue
 
     public function __construct(
         public readonly int $productId,
+        public readonly string $imageUrl,
+        public readonly string $section,
+        public readonly int $sortOrder,
     ) {
     }
 
@@ -31,6 +34,6 @@ class ProcessImportedProductMedia implements ShouldQueue
             return;
         }
 
-        $importedProductSyncService->dispatchQueuedTasks($product);
+        $importedProductSyncService->processDetailImage($product, $this->imageUrl, $this->section, $this->sortOrder);
     }
 }
