@@ -27,6 +27,20 @@ class AdminProductImportApiTest extends TestCase
                     'item_imgs' => [
                         ['url' => 'https://cbu01.alicdn.com/img/ibank/gallery-1.jpg'],
                     ],
+                    'props_img' => [
+                        '0:0' => 'https://cbu01.alicdn.com/img/ibank/sku-1.jpg',
+                    ],
+                    'skus' => [
+                        'sku' => [
+                            [
+                                'sku_id' => 'sku-1',
+                                'properties' => '0:0',
+                                'properties_name' => '0:0:Color:Red',
+                                'price' => 5.50,
+                                'quantity' => 10,
+                            ],
+                        ],
+                    ],
                     'desc' => '<div><img src="https://cbu01.alicdn.com/img/ibank/desc-1.jpg" /></div>',
                     'props' => [
                         ['name' => 'Material', 'value' => 'Plush'],
@@ -50,6 +64,8 @@ class AdminProductImportApiTest extends TestCase
             ->assertJsonCount(1, 'product.description_images')
             ->assertJsonCount(0, 'product.processed_description_images')
             ->assertJsonPath('product.images.0', 'https://cbu01.alicdn.com/img/ibank/gallery-1.jpg')
+            ->assertJsonMissingPath('product.images.1')
+            ->assertJsonPath('product.variants.0.image_url', 'https://cbu01.alicdn.com/img/ibank/sku-1.jpg')
             ->assertJsonPath('product.description_images.0', 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg')
             ->assertJsonPath('product.processed_main_image', null);
     }
@@ -150,7 +166,7 @@ class AdminProductImportApiTest extends TestCase
 
         $response
             ->assertCreated()
-            ->assertJsonCount(2, 'images')
+            ->assertJsonCount(1, 'images')
             ->assertJsonCount(1, 'description_images');
 
         $this->assertSame('1688', $product->source_platform);

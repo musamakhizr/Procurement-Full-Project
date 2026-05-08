@@ -99,12 +99,15 @@ class Product extends Model
      */
     public function galleryPaths(): Collection
     {
+        $variantSourceImages = $this->variantSourceImageUrls();
+
         $sourceGalleryImages = collect([
             data_get($this->source_payload, 'main_image_url'),
             data_get($this->source_payload, 'image_url'),
         ])
             ->merge(data_get($this->source_payload, 'images', []))
             ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->reject(fn (string $path) => $variantSourceImages->contains($path))
             ->unique()
             ->values();
 
@@ -135,6 +138,8 @@ class Product extends Model
         }
 
         if ($this->relationLoaded('productImages')) {
+            $variantSourceImages = $section === 'gallery' ? $this->variantSourceImageUrls() : collect();
+            $variantStoredImages = $section === 'gallery' ? $this->variantStoredImagePaths() : collect();
             $storedImages = $this->productImages
                 ->where('section', $section)
                 ->sortBy('sort_order')
@@ -142,8 +147,19 @@ class Product extends Model
 
             foreach ($storedImages as $image) {
                 $path = $image->path;
+                $sourceUrl = $image->source_url;
 
                 if (! is_string($path) || $path === '') {
+                    continue;
+                }
+
+                if (
+                    $section === 'gallery'
+                    && (
+                        (is_string($sourceUrl) && $sourceUrl !== '' && $variantSourceImages->contains($sourceUrl))
+                        || $variantStoredImages->contains($path)
+                    )
+                ) {
                     continue;
                 }
 
@@ -153,6 +169,39 @@ class Product extends Model
         }
 
         return collect($basePaths)
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function variantSourceImageUrls(): Collection
+    {
+        if ($this->relationLoaded('variants')) {
+            return $this->variants
+                ->pluck('source_image_url')
+                ->filter(fn ($path) => is_string($path) && $path !== '')
+                ->values();
+        }
+
+        return collect(data_get($this->source_payload, 'variants', []))
+            ->map(fn ($variant) => is_array($variant) ? ($variant['image_url'] ?? null) : null)
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function variantStoredImagePaths(): Collection
+    {
+        if (! $this->relationLoaded('variants')) {
+            return collect();
+        }
+
+        return $this->variants
+            ->pluck('image_url')
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values();
     }

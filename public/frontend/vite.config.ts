@@ -27,7 +27,7 @@ export default defineConfig({
   // If you need a different path, also update deploy/templates/nginx-hexugo.conf
   // location blocks AND deploy a config refresh.
   // ───────────────────────────────────────────────────────────────────────
-  base: '/frontend/dist/',
+  base: '/',
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them

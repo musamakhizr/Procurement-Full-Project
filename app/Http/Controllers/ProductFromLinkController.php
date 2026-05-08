@@ -175,7 +175,6 @@ class ProductFromLinkController extends Controller
         $candidates = [
             ...$this->extractArrayImageUrls($item['images'] ?? []),
             ...$this->extractArrayImageUrls($item['item_imgs'] ?? []),
-            ...$this->extractPropsImageUrls($item['props_img'] ?? []),
         ];
 
         return $this->normalizeExtractedUrls($candidates, [$mainImageUrl]);
@@ -245,23 +244,6 @@ class ProductFromLinkController extends Controller
 
                 return null;
             })
-            ->filter(fn ($url) => is_string($url) && $url !== '')
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @param  mixed  $propsImages
-     * @return array<int, string>
-     */
-    private function extractPropsImageUrls(mixed $propsImages): array
-    {
-        if (! is_array($propsImages)) {
-            return [];
-        }
-
-        return collect($propsImages)
-            ->flatten()
             ->filter(fn ($url) => is_string($url) && $url !== '')
             ->values()
             ->all();
