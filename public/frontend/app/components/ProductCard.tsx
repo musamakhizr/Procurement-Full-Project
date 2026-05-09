@@ -31,11 +31,11 @@ export function ProductCard({
   return (
     <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-[#4F6BFF]/30 hover:shadow-xl transition-all overflow-hidden group">
       {/* Image */}
-      <div className="relative overflow-hidden bg-slate-50">
+      <div className="relative overflow-hidden bg-white aspect-square flex items-center justify-center">
         <img
           src={image}
           alt={name}
-          className="w-full h-52 object-cover group-hover:scale-105 transition-transform duration-300"
+          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
         />
         {trending && (
           <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg uppercase tracking-wide">

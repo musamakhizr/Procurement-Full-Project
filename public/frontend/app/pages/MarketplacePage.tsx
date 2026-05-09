@@ -261,8 +261,8 @@ export function MarketplacePage() {
           <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' : 'space-y-4'}>
             {products.map((product) => (
               <Link key={product.id} to={`/marketplace/product/${product.id}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block">
-                <div className="aspect-video bg-slate-100 relative overflow-hidden">
-                  <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
+                  <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
                 </div>
                 <div className="p-5">
                   <div className="text-xs text-[#7C3AED] font-semibold mb-2">{product.category}</div>

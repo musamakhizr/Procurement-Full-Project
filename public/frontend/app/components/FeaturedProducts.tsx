@@ -68,11 +68,11 @@ export function FeaturedProducts() {
               to={`/marketplace/product/${product.id}`}
               className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block"
             >
-              <div className="aspect-video bg-slate-100 relative overflow-hidden">
+              <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
                 <img
                   src={product.image ?? `https://placehold.co/800x600?text=${encodeURIComponent(product.name.split(' ')[0])}`}
                   alt={product.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  className="w-full h-full object-contain group-hover:scale-105 transition-transform"
                 />
                 {product.verified && (
                   <span className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
