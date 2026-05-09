@@ -78,6 +78,7 @@ class ProductDetailResource extends JsonResource
             'description_images' => $descriptionImages,
             'image_source_url' => $this->source_image_url ?? $this->image_url,
             'cat_from_api' => $this->cat_from_api,
+            'import_api_debug' => $this->import_api_debug,
             'import_status' => $this->import_status,
             'base_price' => (float) $this->base_price,
             'moq' => $this->moq,

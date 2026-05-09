@@ -143,6 +143,7 @@ class ProductFromLinkController extends Controller
         $detailUrl = $this->normalizeUrl($detailUrl);
         $descriptionHtml = $this->normalizeDescriptionHtml($item['desc'] ?? null);
         $description = $this->buildDescription($item);
+        $galleryImages = array_slice($galleryImages, 0, 4);
 
         return [
             'title' => $title,

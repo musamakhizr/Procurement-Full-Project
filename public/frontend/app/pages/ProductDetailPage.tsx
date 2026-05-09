@@ -17,27 +17,77 @@ export function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const [hasUserSelectedVariant, setHasUserSelectedVariant] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadProduct = async () => {
+    let isCancelled = false;
+
+    const loadProduct = async (showLoader = false) => {
       if (!id) {
         return;
       }
 
-      setIsLoading(true);
+      if (showLoader) {
+        setIsLoading(true);
+      }
 
       try {
         const response = await fetchProduct(id);
-        setProduct(response);
-        setQuantity(response.moq);
+        if (isCancelled) {
+          return;
+        }
+
+        setProduct((currentProduct) => {
+          if (currentProduct === null) {
+            setQuantity(response.moq);
+            setHasUserSelectedVariant(false);
+          }
+
+          return response;
+        });
       } finally {
-        setIsLoading(false);
+        if (!isCancelled && showLoader) {
+          setIsLoading(false);
+        }
       }
     };
 
-    void loadProduct();
+    void loadProduct(true);
+
+    return () => {
+      isCancelled = true;
+    };
   }, [id]);
+
+  useEffect(() => {
+    if (!id || product?.import_status !== 'processing') {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const pollProduct = async () => {
+      try {
+        const response = await fetchProduct(id);
+
+        if (!isCancelled) {
+          setProduct(response);
+        }
+      } catch {
+        // Keep the existing UI state and try again on the next poll.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void pollProduct();
+    }, 4000);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [id, product?.import_status]);
 
   useEffect(() => {
     if (!product) {
@@ -49,13 +99,23 @@ export function ProductDetailPage() {
       ?? product.variants[0];
 
     if (!defaultVariant) {
-      setSelectedOptions({});
+      setSelectedOptions((currentOptions) => (Object.keys(currentOptions).length === 0 ? {} : currentOptions));
       return;
     }
 
-    setSelectedOptions(
-      Object.fromEntries(defaultVariant.option_values.map((option) => [option.group_name, option.key]))
-    );
+    const defaultOptions = Object.fromEntries(defaultVariant.option_values.map((option) => [option.group_name, option.key]));
+
+    setSelectedOptions((currentOptions) => {
+      if (Object.keys(currentOptions).length === 0) {
+        return defaultOptions;
+      }
+
+      const hasCompatibleVariant = product.variants.some((variant) =>
+        variant.option_values.every((option) => currentOptions[option.group_name] === option.key)
+      );
+
+      return hasCompatibleVariant ? currentOptions : defaultOptions;
+    });
   }, [product]);
 
   useEffect(() => {
@@ -64,7 +124,7 @@ export function ProductDetailPage() {
     }
 
     setSelectedImage(0);
-  }, [product, selectedOptions]);
+  }, [product?.id]);
 
   if (isLoading) {
     return <div className="min-h-screen bg-[#F8FAFC] pt-24 px-6 text-slate-600">Loading product...</div>;
@@ -83,15 +143,16 @@ export function ProductDetailPage() {
       variant.option_values.every((option) => selectedOptions[option.group_name] === option.key)
     ) ?? null;
   })();
-  const galleryImages = Array.from(new Set([
-    ...(selectedVariant?.image ? [selectedVariant.image] : []),
-    ...product.images,
-  ]));
+  const galleryImages = product.images;
   const currentUnitPrice = selectedVariant?.original_price
     ?? selectedVariant?.price
     ?? product.base_price
     ?? 0;
-  const heroImage = galleryImages[selectedImage] ?? product.image_source_url ?? 'https://placehold.co/800x800?text=Product';
+  const heroImage = (
+    hasUserSelectedVariant && selectedVariant?.image
+      ? selectedVariant.image
+      : galleryImages[selectedImage]
+  ) ?? product.image_source_url ?? 'https://placehold.co/800x800?text=Product';
   const currentPrice = currentUnitPrice;
 
   const isOptionAvailable = (groupName: string, optionKey: string) => {
@@ -116,6 +177,7 @@ export function ProductDetailPage() {
     );
 
     if (exactMatch) {
+      setHasUserSelectedVariant(true);
       setSelectedOptions(nextSelection);
       return;
     }
@@ -128,6 +190,7 @@ export function ProductDetailPage() {
       return;
     }
 
+    setHasUserSelectedVariant(true);
     setSelectedOptions(
       Object.fromEntries(compatibleVariant.option_values.map((option) => [option.group_name, option.key]))
     );

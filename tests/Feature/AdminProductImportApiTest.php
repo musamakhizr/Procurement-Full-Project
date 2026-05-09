@@ -47,6 +47,23 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => '介绍商品',
+            ], 200),
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys & Games',
+                        'L1_ZH' => '玩具',
+                        'L2_EN' => 'Educational / STEM Toys',
+                        'L2_ZH' => '益智/科教玩具',
+                        'L3_EN' => 'Science Kits',
+                        'L3_ZH' => '毛绒玩具',
+                        'number' => 0,
+                        'item_name' => 'Imported Plush Toy',
+                    ],
+                ],
+            ], 200),
         ]);
 
         $admin = User::factory()->create(['role' => 'admin']);
@@ -220,19 +237,17 @@ class AdminProductImportApiTest extends TestCase
             'item_name' => 'Imported Plush Toy',
         ], $product->cat_from_api);
         $this->assertSame('completed', $product->import_status);
-        $this->assertCount(3, $product->productImages);
+        $this->assertCount(4, $product->productImages);
         $this->assertCount(2, $product->productImages->where('section', 'gallery'));
         $this->assertCount(1, $product->productImages->where('section', 'description'));
+        $this->assertCount(1, $product->productImages->where('section', 'variant'));
         $this->assertCount(1, $product->variants);
         $this->assertSame('香芋紫-15升', $product->variants->first()->label);
         $this->assertSame(2, $redrawCalls);
-        $this->assertSame(1, $translateCalls);
+        $this->assertSame(2, $translateCalls);
         $this->assertSame(1, $descriptionClassifyCalls);
         $this->assertSame(1, $productCategoryCalls);
-        $this->assertContains(
-            $product->variants->first()?->image_url,
-            $product->productImages->where('section', 'gallery')->pluck('path')->all(),
-        );
+        $this->assertTrue(str_starts_with((string) $product->variants->first()?->image_url, 'products/1/variant-images/'));
 
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
@@ -335,7 +350,7 @@ class AdminProductImportApiTest extends TestCase
         $this->assertCount(2, $product->productImages);
         $this->assertCount(0, $product->productImages->where('section', 'description'));
         $this->assertCount(2, $product->galleryPaths()->all());
-        $this->assertTrue(collect($product->galleryPaths())->every(fn (string $path) => str_starts_with($path, 'products/1/gallery/')));
+        $this->assertTrue(collect($product->galleryPaths())->every(fn (string $path) => str_starts_with($path, 'products/1/redraw-gallery/')));
         $this->assertSame([], $product->descriptionImagePaths()->all());
         $this->assertSame(0, $translateCalls);
     }
@@ -458,7 +473,7 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame(1, $translateCalls);
         $this->assertCount(3, $product->productImages);
         $this->assertNotNull($product->variants->first()?->image_url);
-        $this->assertTrue(str_starts_with((string) $product->variants->first()?->image_url, 'products/1/gallery/'));
+        $this->assertTrue(str_starts_with((string) $product->variants->first()?->image_url, 'products/1/variant-images/'));
     }
 
     public function test_only_first_four_gallery_images_plus_main_use_redraw_api(): void
@@ -552,9 +567,9 @@ class AdminProductImportApiTest extends TestCase
         $product = Product::query()->with('productImages')->firstOrFail();
 
         $this->assertSame(5, $redrawCalls);
-        $this->assertCount(7, $product->productImages);
-        $this->assertContains('https://cdn.example.com/gallery-5.jpg', $product->productImages->pluck('source_url')->all());
-        $this->assertContains('https://cdn.example.com/gallery-6.jpg', $product->productImages->pluck('source_url')->all());
+        $this->assertCount(5, $product->productImages);
+        $this->assertNotContains('https://cdn.example.com/gallery-5.jpg', $product->productImages->pluck('source_url')->all());
+        $this->assertNotContains('https://cdn.example.com/gallery-6.jpg', $product->productImages->pluck('source_url')->all());
 
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
@@ -574,7 +589,7 @@ class AdminProductImportApiTest extends TestCase
             'sku' => 'PX-1',
             'name' => 'Pixel Filter Product',
             'description' => 'Test',
-            'image_url' => 'products/1/gallery/main.jpg',
+            'image_url' => 'products/1/redraw-gallery/main.jpg',
             'base_price' => 1,
             'moq' => 1,
             'lead_time_min_days' => 1,
@@ -593,14 +608,14 @@ class AdminProductImportApiTest extends TestCase
 
         $product->productImages()->createMany([
             [
-                'path' => 'products/1/description/01-real.jpg',
+                'path' => 'products/1/description-images/01-real.jpg',
                 'source_url' => 'https://cbu01.alicdn.com/img/ibank/desc-1.jpg',
                 'section' => 'description',
                 'sort_order' => 0,
                 'is_primary' => false,
             ],
             [
-                'path' => 'products/1/description/02-pixel.jpg',
+                'path' => 'products/1/description-images/02-pixel.jpg',
                 'source_url' => 'https://www.o0b.cn/i.php?t.png&rid=gw-4.69fe3bc7891c4&p=767692421&k=t7100&t=1778269134',
                 'section' => 'description',
                 'sort_order' => 1,
@@ -611,7 +626,8 @@ class AdminProductImportApiTest extends TestCase
         $product->load('productImages');
 
         $this->assertSame([
-            'products/1/description/01-real.jpg',
+            'products/1/description-images/01-real.jpg',
         ], $product->descriptionImagePaths()->all());
     }
 }
+

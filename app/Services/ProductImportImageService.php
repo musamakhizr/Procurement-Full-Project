@@ -322,7 +322,7 @@ class ProductImportImageService
         }
 
         $extension = $this->resolveExtension($contentType, $url);
-        $directory = 'products/'.$product->getKey().'/'.$section;
+        $directory = 'products/'.$product->getKey().'/'.$this->directoryNameForSection($section);
         $filename = sprintf('%02d-%s.%s', $index + 1, Str::random(12), $extension);
         $path = $directory.'/'.$filename;
 
@@ -372,7 +372,7 @@ class ProductImportImageService
         }
 
         $extension = $this->resolveExtensionFromMimeType($image['mime_type']);
-        $directory = 'products/'.$product->getKey().'/'.$section;
+        $directory = 'products/'.$product->getKey().'/'.$this->directoryNameForSection($section);
         $filename = sprintf('%02d-%s.%s', $index + 1, Str::random(12), $extension);
         $path = $directory.'/'.$filename;
 
@@ -429,6 +429,16 @@ class ProductImportImageService
             'image/gif' => 'gif',
             'image/svg+xml' => 'svg',
             default => 'jpg',
+        };
+    }
+
+    private function directoryNameForSection(string $section): string
+    {
+        return match ($section) {
+            'gallery' => 'redraw-gallery',
+            'variant' => 'variant-images',
+            'description' => 'description-images',
+            default => $section,
         };
     }
 }

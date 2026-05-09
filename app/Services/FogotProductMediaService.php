@@ -11,12 +11,14 @@ class FogotProductMediaService
 {
     private const DESCRIPTION_IMAGE_ALLOWED_CATEGORY = '介绍商品';
 
+    private const DESCRIPTION_IMAGE_ALLOWED_CATEGORY_MOJIBAKE = 'ä»‹ç»å•†å“';
+
     /**
      * @return array{mime_type:string,data:string,preview_url:string,source_url:string}|null
      */
     public function redrawMainImage(string $imageUrl): ?array
     {
-        return $this->safeProcessMainImage($imageUrl);
+        return $this->processMainImage($imageUrl);
     }
 
     /**
@@ -24,7 +26,7 @@ class FogotProductMediaService
      */
     public function redrawImage(string $imageUrl): ?array
     {
-        return $this->safeProcessMainImage($imageUrl);
+        return $this->processMainImage($imageUrl);
     }
 
     /**
@@ -32,19 +34,17 @@ class FogotProductMediaService
      */
     public function translateImage(string $imageUrl): array
     {
-        return $this->safeProcessDetailImages([$imageUrl]);
+        return $this->processDetailImages([$imageUrl]);
     }
 
     public function classifyDescriptionImage(string $imageUrl): ?string
     {
-        return $this->safeClassifyDetailImage($imageUrl);
+        return $this->normalizeCategoryLabel($this->classifyDetailImageCategory($imageUrl));
     }
 
     public function shouldKeepDescriptionImage(string $imageUrl): bool
     {
-        $category = $this->classifyDescriptionImage($imageUrl);
-
-        return $category === null || $category === self::DESCRIPTION_IMAGE_ALLOWED_CATEGORY;
+        return $this->classifyDescriptionImage($imageUrl) === self::DESCRIPTION_IMAGE_ALLOWED_CATEGORY;
     }
 
     /**
@@ -52,7 +52,7 @@ class FogotProductMediaService
      */
     public function classifyProductCategory(string $productText, array $item): ?array
     {
-        return $this->safeClassifyProductCategory($productText, $item);
+        return $this->classifyProductCategoryLabel($productText, $item);
     }
 
     /**
@@ -62,7 +62,7 @@ class FogotProductMediaService
      *   main_image: array{mime_type:string,data:string,preview_url:string,source_url:string}|null,
      *   gallery_images: array<int, array{mime_type:string,data:string,preview_url:string,source_url:string}>,
      *   description_images: array<int, array{mime_type:string,data:string,preview_url:string,source_url:string}>,
-     *   category: string|null
+     *   category: array<string, scalar>|null
      * }
      */
     public function processImportPreview(?string $mainImageUrl, array $galleryImageUrls, array $descriptionImageUrls = []): array
@@ -70,13 +70,12 @@ class FogotProductMediaService
         $mainImage = $mainImageUrl ? $this->safeProcessMainImage($mainImageUrl) : null;
         $galleryImages = $this->safeProcessDetailImages($galleryImageUrls);
         $descriptionImages = $this->safeProcessDetailImages($descriptionImageUrls);
-        $category = null;
 
         return [
             'main_image' => $mainImage,
             'gallery_images' => $galleryImages,
             'description_images' => $descriptionImages,
-            'category' => $category,
+            'category' => null,
         ];
     }
 
@@ -115,38 +114,6 @@ class FogotProductMediaService
         }
     }
 
-    private function safeClassifyDetailImage(string $imageUrl): ?string
-    {
-        try {
-            return $this->classifyDetailImageCategory($imageUrl);
-        } catch (Throwable $exception) {
-            $this->logPreviewWarning('Fogot detail image classification failed during product preview.', [
-                'image_url' => $imageUrl,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
-    /**
-     * @return array<string, scalar>|null
-     */
-    private function safeClassifyProductCategory(string $productText, array $item): ?array
-    {
-        try {
-            return $this->classifyProductCategoryLabel($productText, $item);
-        } catch (Throwable $exception) {
-            $this->logPreviewWarning('Fogot product category classification failed during product preview.', [
-                'product_text' => $productText,
-                'item_name' => $item['item_name'] ?? null,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
     /**
      * @return array{mime_type:string,data:string,preview_url:string,source_url:string}|null
      */
@@ -177,21 +144,14 @@ class FogotProductMediaService
                 continue;
             }
 
-            try {
-                $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
-                $json = $this->postJson('/detail/image/translate', [
-                    'image_url' => $imageUrl,
-                    'mime_type' => $mimeType,
-                ]);
+            $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
+            $json = $this->postJson('/detail/image/translate', [
+                'image_url' => $imageUrl,
+                'mime_type' => $mimeType,
+            ]);
 
-                foreach ($this->extractImagePayloads($json) as $image) {
-                    $processedImages[] = $this->formatImagePayload($imageUrl, $image['mime_type'], $image['data']);
-                }
-            } catch (Throwable $exception) {
-                $this->logPreviewWarning('Fogot detail image translation failed for a single image.', [
-                    'image_url' => $imageUrl,
-                    'error' => $exception->getMessage(),
-                ]);
+            foreach ($this->extractImagePayloads($json) as $image) {
+                $processedImages[] = $this->formatImagePayload($imageUrl, $image['mime_type'], $image['data']);
             }
         }
 
@@ -209,7 +169,10 @@ class FogotProductMediaService
 
         $category = data_get($json, 'category')
             ?? data_get($json, 'body.category')
-            ?? data_get($json, 'data.category');
+            ?? data_get($json, 'data.category')
+            ?? data_get($json, 'detail')
+            ?? data_get($json, 'body.detail')
+            ?? data_get($json, 'data.detail');
 
         return is_string($category) && trim($category) !== '' ? trim($category) : null;
     }
@@ -355,6 +318,24 @@ class FogotProductMediaService
             'preview_url' => "data:{$mimeType};base64,{$base64Data}",
             'source_url' => $sourceUrl,
         ];
+    }
+
+    private function normalizeCategoryLabel(?string $category): ?string
+    {
+        if (! is_string($category)) {
+            return null;
+        }
+
+        $normalized = trim($category);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return match ($normalized) {
+            self::DESCRIPTION_IMAGE_ALLOWED_CATEGORY_MOJIBAKE => self::DESCRIPTION_IMAGE_ALLOWED_CATEGORY,
+            default => $normalized,
+        };
     }
 
     private function guessMimeTypeFromUrl(string $url): string

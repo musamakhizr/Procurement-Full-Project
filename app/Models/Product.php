@@ -31,6 +31,7 @@ class Product extends Model
         'import_total_tasks',
         'import_completed_tasks',
         'source_payload',
+        'import_api_debug',
         'moq',
         'lead_time_min_days',
         'lead_time_max_days',
@@ -48,6 +49,7 @@ class Product extends Model
         'base_price' => 'decimal:2',
         'cat_from_api' => 'array',
         'source_payload' => 'array',
+        'import_api_debug' => 'array',
         'import_total_tasks' => 'integer',
         'import_completed_tasks' => 'integer',
     ];
@@ -102,12 +104,15 @@ class Product extends Model
     public function galleryPaths(): Collection
     {
         $variantSourceImages = $this->variantSourceImageUrls();
+        $galleryPayloadImages = collect(data_get($this->source_payload, 'images', []))
+            ->slice(0, 4)
+            ->all();
 
         $sourceGalleryImages = collect([
             data_get($this->source_payload, 'main_image_url'),
             data_get($this->source_payload, 'image_url'),
         ])
-            ->merge(data_get($this->source_payload, 'images', []))
+            ->merge($galleryPayloadImages)
             ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
             ->reject(fn (string $path) => $variantSourceImages->contains($path))
             ->unique()
@@ -176,6 +181,7 @@ class Product extends Model
 
         return collect($basePaths)
             ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->unique()
             ->values();
     }
 

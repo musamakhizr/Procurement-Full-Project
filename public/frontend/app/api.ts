@@ -59,6 +59,34 @@ export interface ProductDetail {
   images: string[];
   description_images: string[];
   image_source_url?: string | null;
+  import_api_debug?: {
+    redraw_gallery_urls?: string[];
+    classify_description_urls?: string[];
+    approved_description_urls?: string[];
+    translate_description_urls?: string[];
+    translate_variant_urls?: string[];
+    category_request?: {
+      product_text?: string;
+      item?: {
+        item_name?: string;
+        description?: string;
+        picture?: string;
+        link?: string;
+        delivery_date?: string;
+        note?: string;
+      };
+    };
+    category_response?: {
+      L1_EN?: string;
+      L1_ZH?: string;
+      L2_EN?: string;
+      L2_ZH?: string;
+      L3_EN?: string;
+      L3_ZH?: string;
+      number?: number;
+      item_name?: string;
+    } | null;
+  } | null;
   cat_from_api?: {
     L1_EN?: string;
     L1_ZH?: string;
@@ -225,7 +253,16 @@ export interface ImportedMarketplaceProduct {
   processed_main_image?: ImportedMarketplaceImagePayload | null;
   processed_gallery_images?: ImportedMarketplaceImagePayload[];
   processed_description_images?: ImportedMarketplaceImagePayload[];
-  classified_category?: string | null;
+  classified_category?: {
+    L1_EN?: string;
+    L1_ZH?: string;
+    L2_EN?: string;
+    L2_ZH?: string;
+    L3_EN?: string;
+    L3_ZH?: string;
+    number?: number;
+    item_name?: string;
+  } | null;
   variants?: ImportedMarketplaceVariant[];
   platform: string;
   num_iid: string;
