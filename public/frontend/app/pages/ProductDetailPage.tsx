@@ -126,6 +126,20 @@ export function ProductDetailPage() {
     setSelectedImage(0);
   }, [product?.id]);
 
+  useEffect(() => {
+    if (!product) {
+      return;
+    }
+
+    setSelectedImage((current) => {
+      if (product.images.length === 0) {
+        return 0;
+      }
+
+      return current >= product.images.length ? 0 : current;
+    });
+  }, [product?.images.length]);
+
   if (isLoading) {
     return <div className="min-h-screen bg-[#F8FAFC] pt-24 px-6 text-slate-600">Loading product...</div>;
   }
@@ -152,7 +166,7 @@ export function ProductDetailPage() {
     hasUserSelectedVariant && selectedVariant?.image
       ? selectedVariant.image
       : galleryImages[selectedImage]
-  ) ?? product.image_source_url ?? 'https://placehold.co/800x800?text=Product';
+  ) ?? galleryImages[0] ?? product.image_source_url ?? 'https://placehold.co/800x800?text=Product';
   const currentPrice = currentUnitPrice;
 
   const isOptionAvailable = (groupName: string, optionKey: string) => {

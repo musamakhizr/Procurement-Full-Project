@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, PaginatedResponse, ProductSummary, updateAdminProduct } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
 
 const EMPTY_FORM = {
   name: '',
@@ -428,6 +428,27 @@ export function AdminProductsPage() {
     await loadAdminData(nextPage, searchQuery);
   };
 
+  const handleRetryImport = async (product: ProductSummary) => {
+    setSaveNotice({
+      tone: 'info',
+      message: `Retrying media processing for ${product.name}.`,
+    });
+
+    try {
+      const response = await retryAdminProductImport(product.id);
+      setSaveNotice({
+        tone: 'success',
+        message: response.message,
+      });
+      await loadAdminData(currentPage, searchQuery);
+    } catch (error: any) {
+      setSaveNotice({
+        tone: 'error',
+        message: error?.response?.data?.message ?? `Unable to retry media processing for ${product.name}.`,
+      });
+    }
+  };
+
   const pageNumbers = useMemo(() => {
     return Array.from({ length: pagination.last_page }, (_, index) => index + 1);
   }, [pagination.last_page]);
@@ -526,6 +547,14 @@ export function AdminProductsPage() {
                       <div className="flex items-center gap-2">
                         <button onClick={() => void handleEditProduct(product)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit product">
                           <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => void handleRetryImport(product)}
+                          disabled={product.import_status === 'processing' || product.import_status === 'pending'}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Retry import processing"
+                        >
+                          <RotateCcw className="w-4 h-4" />
                         </button>
                         <button onClick={() => void handleDeleteProduct(product.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete product">
                           <Trash2 className="w-4 h-4" />

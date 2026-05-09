@@ -42,6 +42,10 @@ export interface ProductSummary {
   customizable: boolean;
   stock_quantity: number;
   status: string;
+  import_status?: string | null;
+  import_error?: string | null;
+  import_total_tasks?: number | null;
+  import_completed_tasks?: number | null;
   last_updated: string | null;
   unit_price: number;
   base_price_range: string;
@@ -461,6 +465,15 @@ export async function updateAdminProduct(id: number, payload: Partial<AdminProdu
 
 export async function deleteAdminProduct(id: number) {
   await api.delete(`/admin/products/${id}`);
+}
+
+export async function retryAdminProductImport(id: number) {
+  const { data } = await api.post<{
+    message: string;
+    product: ProductDetail;
+  }>(`/admin/products/${id}/retry-import`);
+
+  return data;
 }
 
 export async function fetchAdminProductFromLink(link: string) {

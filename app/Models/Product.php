@@ -118,6 +118,10 @@ class Product extends Model
             ->unique()
             ->values();
 
+        if ($this->shouldPreferStoredMedia()) {
+            return $this->storedImagePathsForSection('gallery', $this->image_url, true);
+        }
+
         return $this->mergedImagePathsForSection('gallery', $sourceGalleryImages, $this->image_url);
     }
 
@@ -130,7 +134,16 @@ class Product extends Model
             ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
             ->values();
 
+        if ($this->shouldPreferStoredMedia()) {
+            return $this->storedImagePathsForSection('description');
+        }
+
         return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
+    }
+
+    private function shouldPreferStoredMedia(): bool
+    {
+        return in_array($this->import_status, ['completed', 'failed'], true);
     }
 
     /**
@@ -183,6 +196,60 @@ class Product extends Model
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->unique()
             ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function storedImagePathsForSection(string $section, ?string $fallbackPrimaryPath = null, bool $excludeVariantImages = false): Collection
+    {
+        $variantSourceImages = $excludeVariantImages ? $this->variantSourceImageUrls() : collect();
+        $variantStoredImages = $excludeVariantImages ? $this->variantStoredImagePaths() : collect();
+
+        $storedImages = $this->relationLoaded('productImages')
+            ? $this->productImages->where('section', $section)->sortBy('sort_order')->values()
+            : $this->productImages()->where('section', $section)->orderBy('sort_order')->get();
+
+        $paths = collect($storedImages)
+            ->map(function ($image) use ($section, $variantSourceImages, $variantStoredImages) {
+                $path = $image->path;
+                $sourceUrl = $image->source_url;
+
+                if (! is_string($path) || $path === '') {
+                    return null;
+                }
+
+                if ($this->shouldIgnoreImageUrl($sourceUrl) || $this->shouldIgnoreImageUrl($path)) {
+                    return null;
+                }
+
+                if (
+                    $section === 'gallery'
+                    && (
+                        (is_string($sourceUrl) && $sourceUrl !== '' && $variantSourceImages->contains($sourceUrl))
+                        || $variantStoredImages->contains($path)
+                    )
+                ) {
+                    return null;
+                }
+
+                return $path;
+            })
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->unique()
+            ->values();
+
+        if (
+            $paths->isEmpty()
+            && $section === 'gallery'
+            && is_string($fallbackPrimaryPath)
+            && $fallbackPrimaryPath !== ''
+            && ! $this->shouldIgnoreImageUrl($fallbackPrimaryPath)
+        ) {
+            return collect([$fallbackPrimaryPath]);
+        }
+
+        return $paths;
     }
 
     /**

@@ -137,6 +137,27 @@ class AdminProductController extends Controller
         ]);
     }
 
+    public function retryImport(Product $product)
+    {
+        $sourcePayload = $product->source_payload;
+
+        if (! is_array($sourcePayload) || $sourcePayload === []) {
+            return response()->json([
+                'message' => 'This product does not have an import payload to retry.',
+            ], 422);
+        }
+
+        $this->importedProductSyncService->syncVariants($product, $sourcePayload);
+        $this->importedProductSyncService->schedule($product, $sourcePayload);
+
+        $product->refresh()->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
+
+        return response()->json([
+            'message' => 'Product media reprocessing has been queued.',
+            'product' => new ProductDetailResource($product),
+        ]);
+    }
+
     private function syncPriceTiers(Product $product, array $tiers): void
     {
         $product->priceTiers()->delete();

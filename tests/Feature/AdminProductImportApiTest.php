@@ -629,5 +629,165 @@ class AdminProductImportApiTest extends TestCase
             'products/1/description-images/01-real.jpg',
         ], $product->descriptionImagePaths()->all());
     }
+
+    public function test_completed_product_detail_only_uses_stored_processed_gallery_images(): void
+    {
+        $category = Category::query()->create([
+            'name' => 'Processed Media',
+            'slug' => 'processed-media',
+            'sort_order' => 1,
+        ]);
+
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'PROC-98',
+            'name' => 'Processed Product',
+            'description' => 'Test product',
+            'image_url' => 'products/98/redraw-gallery/01-main.jpg',
+            'source_image_url' => 'https://cdn.example.com/main-source.jpg',
+            'import_status' => 'completed',
+            'moq' => 1,
+            'lead_time_min_days' => 1,
+            'lead_time_max_days' => 2,
+            'stock_quantity' => 10,
+            'base_price' => 9.99,
+            'source_payload' => [
+                'main_image_url' => 'https://cdn.example.com/main-source.jpg',
+                'images' => [
+                    'https://cdn.example.com/gallery-1.jpg',
+                    'https://cdn.example.com/gallery-2.jpg',
+                    'https://cdn.example.com/gallery-3.jpg',
+                    'https://cdn.example.com/gallery-4.jpg',
+                ],
+                'description_images' => [
+                    'https://cdn.example.com/desc-1.jpg',
+                ],
+            ],
+        ]);
+
+        $product->productImages()->create([
+            'path' => 'products/98/redraw-gallery/01-main.jpg',
+            'source_url' => 'https://cdn.example.com/main-source.jpg',
+            'section' => 'gallery',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->getJson("/api/products/{$product->id}")
+            ->assertOk()
+            ->assertJsonCount(1, 'images')
+            ->assertJsonCount(0, 'description_images');
+    }
+
+    public function test_admin_can_retry_imported_product_processing(): void
+    {
+        Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('processed-main-image'),
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('processed-variant-image'),
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => '介绍商品',
+            ], 200),
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Early Years',
+                        'L1_ZH' => '幼儿启蒙',
+                        'L2_EN' => 'Learning Areas',
+                        'L2_ZH' => '学习领域',
+                        'L3_EN' => 'Sensory Play',
+                        'L3_ZH' => '感官游戏',
+                        'number' => 0,
+                        'item_name' => 'Retry Product',
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Retry Category',
+            'slug' => 'retry-category',
+            'sort_order' => 1,
+        ]);
+
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'RETRY-1',
+            'name' => 'Retry Product',
+            'description' => 'Retry description',
+            'image_url' => 'https://cdn.example.com/main.jpg',
+            'source_image_url' => 'https://cdn.example.com/main.jpg',
+            'source_platform' => '1688',
+            'source_product_id' => 'retry-1',
+            'source_url' => 'https://detail.1688.com/offer/retry-1.html',
+            'import_status' => 'failed',
+            'import_error' => 'Old failure',
+            'moq' => 1,
+            'lead_time_min_days' => 1,
+            'lead_time_max_days' => 2,
+            'stock_quantity' => 10,
+            'base_price' => 9.99,
+            'source_payload' => [
+                'title' => 'Retry Product',
+                'platform' => '1688',
+                'num_iid' => 'retry-1',
+                'detail_url' => 'https://detail.1688.com/offer/retry-1.html',
+                'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'description' => 'Retry description',
+                'images' => [
+                    'https://cdn.example.com/gallery-1.jpg',
+                ],
+                'description_images' => [
+                    'https://cdn.example.com/desc-1.jpg',
+                ],
+                'variants' => [
+                    [
+                        'sku_id' => 'sku-1',
+                        'label' => 'Variant 1',
+                        'image_url' => 'https://cdn.example.com/variant-1.jpg',
+                        'stock_quantity' => 10,
+                        'option_values' => [
+                            [
+                                'key' => '0:0',
+                                'group_name' => '颜色',
+                                'value' => 'Blue',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson("/api/admin/products/{$product->id}/retry-import")
+            ->assertOk()
+            ->assertJsonPath('message', 'Product media reprocessing has been queued.');
+
+        $product->refresh()->load('productImages');
+
+        $this->assertSame('completed', $product->import_status);
+        $this->assertNotNull($product->cat_from_api);
+        $this->assertGreaterThanOrEqual(2, $product->productImages->count());
+    }
 }
 

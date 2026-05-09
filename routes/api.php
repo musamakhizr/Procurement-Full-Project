@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/products', [AdminProductController::class, 'index']);
         Route::get('/products/from-link', [ProductFromLinkController::class, 'show']);
         Route::post('/products', [AdminProductController::class, 'store']);
+        Route::post('/products/{product}/retry-import', [AdminProductController::class, 'retryImport']);
         Route::patch('/products/{product}', [AdminProductController::class, 'update']);
         Route::delete('/products/{product}', [AdminProductController::class, 'destroy']);
 
