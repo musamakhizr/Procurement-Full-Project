@@ -434,6 +434,11 @@ export async function addProcurementListItem(productId: number, quantity?: numbe
   return data;
 }
 
+export async function addProcurementListItems(items: Array<{ product_id: number; quantity: number; product_variant_id?: number | null }>) {
+  const { data } = await api.post<ProcurementListItem[]>('/procurement-list/bulk', { items });
+  return data;
+}
+
 export async function updateProcurementListItem(id: number, quantity: number) {
   const { data } = await api.patch<ProcurementListItem>(`/procurement-list/${id}`, { quantity });
   return data;

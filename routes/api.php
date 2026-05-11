@@ -35,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/procurement-list', [ProcurementListController::class, 'index']);
     Route::post('/procurement-list', [ProcurementListController::class, 'store']);
+    Route::post('/procurement-list/bulk', [ProcurementListController::class, 'bulkStore']);
     Route::patch('/procurement-list/{procurementListItem}', [ProcurementListController::class, 'update']);
     Route::delete('/procurement-list/{procurementListItem}', [ProcurementListController::class, 'destroy']);
 

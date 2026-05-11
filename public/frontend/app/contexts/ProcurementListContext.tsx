@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import {
+  addProcurementListItems,
   addProcurementListItem,
   fetchProcurementList,
   ProductDetail,
@@ -17,6 +18,7 @@ interface ProcurementListContextType {
     quantity?: number,
     productVariantId?: number | null
   ) => Promise<void>;
+  addItems: (items: Array<{ product_id: number; quantity: number; product_variant_id?: number | null }>) => Promise<void>;
   removeItem: (id: number) => Promise<void>;
   updateQuantity: (id: number, quantity: number) => Promise<void>;
   refreshItems: () => Promise<void>;
@@ -72,6 +74,31 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const addItems = async (itemsToAdd: Array<{ product_id: number; quantity: number; product_variant_id?: number | null }>) => {
+    if (itemsToAdd.length === 0) {
+      return;
+    }
+
+    const savedItems = await addProcurementListItems(itemsToAdd);
+
+    setItems((prev) => {
+      const merged = [...prev];
+
+      savedItems.forEach((savedItem) => {
+        const existingIndex = merged.findIndex((currentItem) => currentItem.product_id === savedItem.product_id && currentItem.product_variant_id === savedItem.product_variant_id);
+
+        if (existingIndex === -1) {
+          merged.push(savedItem);
+          return;
+        }
+
+        merged[existingIndex] = savedItem;
+      });
+
+      return merged;
+    });
+  };
+
   const removeItem = async (id: number) => {
     await removeProcurementListItem(id);
     setItems((prev) => prev.filter((item) => item.id !== id));
@@ -90,6 +117,7 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
     <ProcurementListContext.Provider value={{
       items,
       addItem,
+      addItems,
       removeItem,
       updateQuantity,
       refreshItems,
