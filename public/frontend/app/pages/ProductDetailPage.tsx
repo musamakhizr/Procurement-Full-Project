@@ -17,7 +17,6 @@ export function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-  const [hasUserSelectedVariant, setHasUserSelectedVariant] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -41,7 +40,6 @@ export function ProductDetailPage() {
         setProduct((currentProduct) => {
           if (currentProduct === null) {
             setQuantity(response.moq);
-            setHasUserSelectedVariant(false);
           }
 
           return response;
@@ -157,16 +155,17 @@ export function ProductDetailPage() {
       variant.option_values.every((option) => selectedOptions[option.group_name] === option.key)
     ) ?? null;
   })();
-  const galleryImages = product.images;
+  const galleryImages = selectedVariant?.image
+    ? [selectedVariant.image, ...product.images.filter((image) => image !== selectedVariant.image)]
+    : product.images;
   const currentUnitPrice = selectedVariant?.original_price
     ?? selectedVariant?.price
     ?? product.base_price
     ?? 0;
-  const heroImage = (
-    hasUserSelectedVariant && selectedVariant?.image
-      ? selectedVariant.image
-      : galleryImages[selectedImage]
-  ) ?? galleryImages[0] ?? product.image_source_url ?? 'https://placehold.co/800x800?text=Product';
+  const heroImage = galleryImages[selectedImage]
+    ?? galleryImages[0]
+    ?? product.image_source_url
+    ?? 'https://placehold.co/800x800?text=Product';
   const currentPrice = currentUnitPrice;
 
   const isOptionAvailable = (groupName: string, optionKey: string) => {
@@ -191,7 +190,7 @@ export function ProductDetailPage() {
     );
 
     if (exactMatch) {
-      setHasUserSelectedVariant(true);
+      setSelectedImage(0);
       setSelectedOptions(nextSelection);
       return;
     }
@@ -204,7 +203,7 @@ export function ProductDetailPage() {
       return;
     }
 
-    setHasUserSelectedVariant(true);
+    setSelectedImage(0);
     setSelectedOptions(
       Object.fromEntries(compatibleVariant.option_values.map((option) => [option.group_name, option.key]))
     );

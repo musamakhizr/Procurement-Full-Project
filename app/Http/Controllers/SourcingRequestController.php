@@ -11,15 +11,15 @@ class SourcingRequestController extends Controller
 {
     public function index(Request $request)
     {
+        $perPage = min(max((int) $request->integer('per_page', 10), 1), 50);
+
         $sourcingRequests = SourcingRequest::query()
             ->where('user_id', $request->user()->id)
             ->with('links')
             ->latest()
-            ->get();
+            ->paginate($perPage);
 
-        return response()->json([
-            'data' => SourcingRequestResource::collection($sourcingRequests),
-        ]);
+        return SourcingRequestResource::collection($sourcingRequests);
     }
 
     public function store(StoreSourcingRequestRequest $request)

@@ -19,6 +19,7 @@ interface ProcurementListContextType {
   ) => Promise<void>;
   removeItem: (id: number) => Promise<void>;
   updateQuantity: (id: number, quantity: number) => Promise<void>;
+  refreshItems: () => Promise<void>;
   isInList: (productId: number, productVariantId?: number | null) => boolean;
   itemCount: number;
   isLoading: boolean;
@@ -31,25 +32,25 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ProcurementListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const refreshItems = async () => {
+    if (!isAuthenticated) {
+      setItems([]);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetchProcurementList();
+      setItems(response);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadItems = async () => {
-      if (!isAuthenticated) {
-        setItems([]);
-        return;
-      }
-
-      setIsLoading(true);
-
-      try {
-        const response = await fetchProcurementList();
-        setItems(response);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     if (!authLoading) {
-      loadItems();
+      void refreshItems();
     }
   }, [authLoading, isAuthenticated]);
 
@@ -91,6 +92,7 @@ export function ProcurementListProvider({ children }: { children: ReactNode }) {
       addItem,
       removeItem,
       updateQuantity,
+      refreshItems,
       isInList,
       itemCount: items.length,
       isLoading,

@@ -1,8 +1,9 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Trash2, Plus, Minus, Download, Send, ChevronRight } from 'lucide-react';
+import { Trash2, Plus, Minus, Download, Send, ChevronRight, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProcurementList } from '../contexts/ProcurementListContext';
-import { ProcurementListItem } from '../api';
+import { ProcurementListItem, submitQuoteRequest } from '../api';
 
 function downloadCSV(items: ProcurementListItem[]) {
   const headers = ['SKU', 'Product Name', 'Category', 'Quantity', 'Unit Price (RMB)', 'Line Total (RMB)'];
@@ -32,10 +33,70 @@ function downloadCSV(items: ProcurementListItem[]) {
 export function ProcurementListPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const { items, isLoading, removeItem, updateQuantity } = useProcurementList();
+  const { items, isLoading, removeItem, updateQuantity, refreshItems } = useProcurementList();
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+  const [quoteNotes, setQuoteNotes] = useState('');
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+  const didInitializeSelection = useRef(false);
 
-  const getTotal = () => items.reduce((sum, item) => sum + item.line_total, 0);
-  const getTotalItems = () => items.reduce((sum, item) => sum + item.quantity, 0);
+  useEffect(() => {
+    const availableIds = items.map((item) => item.id);
+
+    if (availableIds.length === 0) {
+      didInitializeSelection.current = false;
+    }
+
+    setSelectedItemIds((currentIds) => {
+      const retainedIds = currentIds.filter((id) => availableIds.includes(id));
+
+      if (!didInitializeSelection.current && availableIds.length > 0) {
+        didInitializeSelection.current = true;
+
+        return availableIds;
+      }
+
+      return retainedIds;
+    });
+  }, [items]);
+
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedItemIds.includes(item.id)),
+    [items, selectedItemIds]
+  );
+  const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.line_total, 0);
+  const selectedTotalItems = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
+  const allSelected = items.length > 0 && selectedItemIds.length === items.length;
+
+  const toggleSelection = (itemId: number) => {
+    setSelectedItemIds((currentIds) =>
+      currentIds.includes(itemId)
+        ? currentIds.filter((id) => id !== itemId)
+        : [...currentIds, itemId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedItemIds(allSelected ? [] : items.map((item) => item.id));
+  };
+
+  const handleRequestQuote = async () => {
+    if (selectedItemIds.length === 0 || isSubmittingQuote) {
+      return;
+    }
+
+    setIsSubmittingQuote(true);
+
+    try {
+      await submitQuoteRequest({
+        item_ids: selectedItemIds,
+        notes: quoteNotes.trim() || undefined,
+      });
+      await refreshItems();
+      navigate('/my-quote-requests');
+    } finally {
+      setIsSubmittingQuote(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
@@ -71,9 +132,35 @@ export function ProcurementListPage() {
                 </div>
               ) : (
                 <>
+                  <div className="flex flex-col gap-3 rounded-2xl border-2 border-[#4F6BFF]/20 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="font-bold text-slate-900">Quote review selection</h2>
+                      <p className="text-sm text-slate-600">Choose the products that should be saved into this quote request.</p>
+                    </div>
+                    <button
+                      onClick={toggleSelectAll}
+                      className="rounded-xl border-2 border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF]"
+                    >
+                      {allSelected ? 'Clear selection' : 'Select all'}
+                    </button>
+                  </div>
+
                   {items.map((item) => (
-                    <div key={item.id} className="rounded-2xl border-2 border-slate-200 bg-white p-6 transition-all hover:border-[#4F6BFF]/40">
+                    <div
+                      key={item.id}
+                      className={`rounded-2xl border-2 bg-white p-6 transition-all hover:border-[#4F6BFF]/40 ${
+                        selectedItemIds.includes(item.id) ? 'border-[#4F6BFF]/60 shadow-sm' : 'border-slate-200'
+                      }`}
+                    >
                       <div className="flex gap-6">
+                        <input
+                          type="checkbox"
+                          checked={selectedItemIds.includes(item.id)}
+                          onChange={() => toggleSelection(item.id)}
+                          className="mt-9 h-6 w-6 flex-shrink-0 rounded-lg border-2 border-slate-300 accent-[#4F6BFF]"
+                          aria-label={`Select ${item.name} for quote request`}
+                        />
+
                         <Link to={`/marketplace/product/${item.product_id}`} className="flex-shrink-0">
                           <div className="h-24 w-24 overflow-hidden rounded-xl bg-slate-100">
                             <img src={item.image ?? 'https://placehold.co/200x200?text=Product'} alt={item.name} className="h-full w-full object-cover" />
@@ -144,11 +231,11 @@ export function ProcurementListPage() {
                   <div className="mb-6 space-y-3 border-b-2 border-slate-200 pb-6">
                     <div className="flex items-center justify-between text-slate-700">
                       <span>{t('procurementList.totalItems')}</span>
-                      <span className="font-semibold">{getTotalItems()} {t('marketplace.units')}</span>
+                      <span className="font-semibold">{selectedTotalItems} {t('marketplace.units')}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-700">
                       <span>{t('procurementList.subtotal')}</span>
-                      <span className="font-semibold">¥{getTotal().toFixed(2)}</span>
+                      <span className="font-semibold">¥{selectedSubtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-slate-600">
                       <span>{t('procurementList.estimatedTax')}</span>
@@ -162,13 +249,31 @@ export function ProcurementListPage() {
 
                   <div className="mb-6 flex items-center justify-between text-xl">
                     <span className="font-bold text-slate-900">{t('product.totalEstimate')}</span>
-                    <span className="font-bold text-[#4F6BFF]">¥{getTotal().toFixed(2)}</span>
+                    <span className="font-bold text-[#4F6BFF]">¥{selectedSubtotal.toFixed(2)}</span>
+                  </div>
+
+                  <div className="mb-6 rounded-2xl bg-slate-50 p-4">
+                    <div className="mb-2 flex items-center justify-between text-sm font-semibold text-slate-700">
+                      <span>Selected for quote</span>
+                      <span>{selectedItems.length} / {items.length}</span>
+                    </div>
+                    <textarea
+                      value={quoteNotes}
+                      onChange={(event) => setQuoteNotes(event.target.value)}
+                      rows={3}
+                      placeholder="Optional notes for the procurement team"
+                      className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#4F6BFF]"
+                    />
                   </div>
 
                   <div className="space-y-3">
-                    <button onClick={() => navigate('/sourcing')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4F6BFF] py-4 font-bold text-white transition-colors hover:bg-[#3D56E0]">
-                      <Send className="h-5 w-5" />
-                      {t('procurementList.requestQuote')}
+                    <button
+                      onClick={() => void handleRequestQuote()}
+                      disabled={selectedItemIds.length === 0 || isSubmittingQuote}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4F6BFF] py-4 font-bold text-white transition-colors hover:bg-[#3D56E0] disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      {isSubmittingQuote ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                      {isSubmittingQuote ? 'Saving quote request...' : t('procurementList.requestQuote')}
                     </button>
                     <button
                       onClick={() => downloadCSV(items)}

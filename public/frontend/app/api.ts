@@ -164,6 +164,56 @@ export interface ProcurementListItem {
   line_total: number;
 }
 
+export type QuoteRequestStatus = 'submitted' | 'accepted' | 'rejected';
+
+export interface QuoteRequestItem {
+  id: number;
+  procurement_list_item_id: number | null;
+  product_id: number | null;
+  product_variant_id: number | null;
+  product_name: string;
+  product_sku: string | null;
+  category_name: string | null;
+  image: string | null;
+  raw_image_url: string | null;
+  variant_sku_id: string | null;
+  variant_label: string | null;
+  variant_options: Array<{
+    key: string;
+    group_name: string;
+    value: string;
+  }>;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  moq: number | null;
+  product_snapshot: Record<string, unknown>;
+}
+
+export interface QuoteRequest {
+  id: number;
+  reference: string;
+  status: QuoteRequestStatus;
+  status_label: string;
+  total_items: number;
+  subtotal: number;
+  notes: string | null;
+  created_at: string;
+  updated_at?: string;
+  items: QuoteRequestItem[];
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    organization_name: string | null;
+  };
+}
+
+export interface QuoteRequestPayload {
+  item_ids: number[];
+  notes?: string;
+}
+
 export interface DashboardData {
   summary: {
     pending_requests: number;
@@ -393,6 +443,18 @@ export async function removeProcurementListItem(id: number) {
   await api.delete(`/procurement-list/${id}`);
 }
 
+export async function submitQuoteRequest(payload: QuoteRequestPayload) {
+  const { data } = await api.post<{ data: QuoteRequest }>('/quote-requests', payload);
+  return data.data;
+}
+
+export async function fetchQuoteRequests(page = 1, perPage = 10) {
+  const { data } = await api.get<PaginatedResponse<QuoteRequest>>('/quote-requests', {
+    params: { page, per_page: perPage },
+  });
+  return data;
+}
+
 export interface SourcingRequest {
   id: number;
   reference: string;
@@ -421,18 +483,34 @@ export async function submitSourcingRequest(payload: SourcingRequestPayload) {
   return data;
 }
 
-export async function fetchSourcingRequests() {
-  const { data } = await api.get<{ data: SourcingRequest[] }>('/sourcing-requests');
-  return data.data;
+export async function fetchSourcingRequests(page = 1, perPage = 10) {
+  const { data } = await api.get<PaginatedResponse<SourcingRequest>>('/sourcing-requests', {
+    params: { page, per_page: perPage },
+  });
+  return data;
 }
 
-export async function fetchAdminSourcingRequests() {
-  const { data } = await api.get<{ data: SourcingRequest[] }>('/admin/sourcing-requests');
-  return data.data;
+export async function fetchAdminSourcingRequests(page = 1, perPage = 10) {
+  const { data } = await api.get<PaginatedResponse<SourcingRequest>>('/admin/sourcing-requests', {
+    params: { page, per_page: perPage },
+  });
+  return data;
 }
 
 export async function updateAdminSourcingRequestStatus(id: number, status: 'accepted' | 'rejected') {
   const { data } = await api.patch<{ data: SourcingRequest }>(`/admin/sourcing-requests/${id}`, { status });
+  return data.data;
+}
+
+export async function fetchAdminQuoteRequests(page = 1, perPage = 10) {
+  const { data } = await api.get<PaginatedResponse<QuoteRequest>>('/admin/quote-requests', {
+    params: { page, per_page: perPage },
+  });
+  return data;
+}
+
+export async function updateAdminQuoteRequestStatus(id: number, status: Extract<QuoteRequestStatus, 'accepted' | 'rejected'>) {
+  const { data } = await api.patch<{ data: QuoteRequest }>(`/admin/quote-requests/${id}`, { status });
   return data.data;
 }
 

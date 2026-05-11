@@ -47,6 +47,9 @@ export function Header() {
                   <Link to="/my-requests" className="text-sm text-slate-700 hover:text-[#4F6BFF] transition-colors font-medium">
                     {t('header.requests')}
                   </Link>
+                  <Link to="/my-quote-requests" className="text-sm text-slate-700 hover:text-[#4F6BFF] transition-colors font-medium">
+                    Quotes
+                  </Link>
                   <Link to="/#ai" className="text-sm text-slate-700 hover:text-[#4F6BFF] transition-colors font-medium">
                     {t('header.aiAssistant')}
                   </Link>
@@ -54,6 +57,11 @@ export function Header() {
                     <Link to="/admin/requests" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium flex items-center gap-1">
                       <Settings className="w-3.5 h-3.5" />
                       Admin Requests
+                    </Link>
+                  )}
+                  {user?.is_admin && (
+                    <Link to="/admin/quote-requests" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium">
+                      Admin Quotes
                     </Link>
                   )}
                   {user?.is_admin && (
@@ -139,10 +147,21 @@ export function Header() {
                     <Link to="/procurement-list" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
                       {t('header.procurementList')}
                     </Link>
+                    <Link to="/my-requests" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      Custom Requests
+                    </Link>
+                    <Link to="/my-quote-requests" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      Catalog Quotes
+                    </Link>
                     {user?.is_admin && (
                       <Link to="/admin/requests" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                         <Settings className="w-3.5 h-3.5" />
                         Admin Requests
+                      </Link>
+                    )}
+                    {user?.is_admin && (
+                      <Link to="/admin/quote-requests" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                        Admin Quotes
                       </Link>
                     )}
                     {user?.is_admin && (

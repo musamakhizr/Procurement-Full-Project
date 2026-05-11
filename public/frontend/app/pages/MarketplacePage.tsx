@@ -8,6 +8,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 type ViewMode = 'grid' | 'list';
 
+type PaginationState = {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+};
+
 type CategoryNode = {
   id: number;
   name: string;
@@ -39,10 +46,26 @@ export function MarketplacePage() {
   const [verifiedOnly, setVerifiedOnly] = useState(searchParams.get('verified_only') === '1');
   const [customizableOnly, setCustomizableOnly] = useState(searchParams.get('customizable_only') === '1');
   const [sort, setSort] = useState(searchParams.get('sort') ?? '');
+  const [page, setPage] = useState(Math.max(1, Number(searchParams.get('page') ?? '1') || 1));
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery.trim());
+  const [pagination, setPagination] = useState<PaginationState>({
+    current_page: page,
+    last_page: 1,
+    per_page: 12,
+    total: 0,
+  });
 
   useEffect(() => {
     fetchCategories().then(setCategories);
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -52,15 +75,17 @@ export function MarketplacePage() {
         const response = await fetchProducts({
           category: selectedCategory !== 'all' ? selectedCategory : undefined,
           subcategory: selectedSubcategory ?? undefined,
-          search: searchQuery || undefined,
+          search: debouncedSearchQuery || undefined,
           moq_max: moqMax || undefined,
           lead_time_max: leadTimeMax || undefined,
           verified_only: verifiedOnly || undefined,
           customizable_only: customizableOnly || undefined,
           sort: sort || undefined,
+          page,
         });
 
         setProducts(response.data);
+        setPagination(response.meta);
       } finally {
         setIsLoading(false);
       }
@@ -70,16 +95,17 @@ export function MarketplacePage() {
 
     if (selectedCategory !== 'all') nextParams.set('category', selectedCategory);
     if (selectedSubcategory) nextParams.set('subcategory', selectedSubcategory);
-    if (searchQuery) nextParams.set('search', searchQuery);
+    if (debouncedSearchQuery) nextParams.set('search', debouncedSearchQuery);
     if (moqMax) nextParams.set('moq_max', moqMax);
     if (leadTimeMax) nextParams.set('lead_time_max', leadTimeMax);
     if (verifiedOnly) nextParams.set('verified_only', '1');
     if (customizableOnly) nextParams.set('customizable_only', '1');
     if (sort) nextParams.set('sort', sort);
+    if (page > 1) nextParams.set('page', String(page));
 
     setSearchParams(nextParams, { replace: true });
     void loadProducts();
-  }, [customizableOnly, leadTimeMax, moqMax, searchQuery, selectedCategory, selectedSubcategory, setSearchParams, sort, verifiedOnly]);
+  }, [customizableOnly, debouncedSearchQuery, leadTimeMax, moqMax, page, selectedCategory, selectedSubcategory, setSearchParams, sort, verifiedOnly]);
 
   const normalizedCategories = useMemo(
     () => [{ id: 0, name: t('marketplace.categoryAll'), slug: 'all', children: [] }, ...categories],
@@ -139,7 +165,7 @@ export function MarketplacePage() {
             {selectedCategory !== 'all' && (
               <>
                 <span className="text-slate-300">•</span>
-                <p className="font-semibold text-[#4F6BFF]">{products.length} products</p>
+                <p className="font-semibold text-[#4F6BFF]">{pagination.total} products</p>
               </>
             )}
           </div>
@@ -153,7 +179,10 @@ export function MarketplacePage() {
                 type="text"
                 placeholder={t('marketplace.searchPlaceholder')}
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setPage(1);
+                  setSearchQuery(event.target.value);
+                }}
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#4F6BFF] focus:ring-2 focus:ring-[#4F6BFF]/10 focus:bg-white text-sm text-slate-900 placeholder:text-slate-400"
               />
             </div>
@@ -177,7 +206,10 @@ export function MarketplacePage() {
             <div className="pt-4 mt-4 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">{t('marketplace.filterMOQ')}</label>
-                <select value={moqMax} onChange={(event) => setMoqMax(event.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-[#4F6BFF] text-sm text-slate-700 bg-white">
+                <select value={moqMax} onChange={(event) => {
+                  setPage(1);
+                  setMoqMax(event.target.value);
+                }} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-[#4F6BFF] text-sm text-slate-700 bg-white">
                   <option value="">{t('marketplace.filterAny')}</option>
                   <option value="10">1-10 {t('marketplace.units')}</option>
                   <option value="50">11-50 {t('marketplace.units')}</option>
@@ -186,7 +218,10 @@ export function MarketplacePage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">{t('marketplace.filterLeadTime')}</label>
-                <select value={leadTimeMax} onChange={(event) => setLeadTimeMax(event.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-[#4F6BFF] text-sm text-slate-700 bg-white">
+                <select value={leadTimeMax} onChange={(event) => {
+                  setPage(1);
+                  setLeadTimeMax(event.target.value);
+                }} className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-[#4F6BFF] text-sm text-slate-700 bg-white">
                   <option value="">{t('marketplace.filterAny')}</option>
                   <option value="3">1-3 days</option>
                   <option value="7">4-7 days</option>
@@ -197,11 +232,17 @@ export function MarketplacePage() {
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">{t('marketplace.filterOptions')}</label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={verifiedOnly} onChange={(event) => setVerifiedOnly(event.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#4F6BFF] focus:ring-[#4F6BFF]" />
+                    <input type="checkbox" checked={verifiedOnly} onChange={(event) => {
+                      setPage(1);
+                      setVerifiedOnly(event.target.checked);
+                    }} className="w-4 h-4 rounded border-slate-300 text-[#4F6BFF] focus:ring-[#4F6BFF]" />
                     <span className="text-sm text-slate-700 group-hover:text-slate-900">{t('marketplace.filterVerifiedOnly')}</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={customizableOnly} onChange={(event) => setCustomizableOnly(event.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#4F6BFF] focus:ring-[#4F6BFF]" />
+                    <input type="checkbox" checked={customizableOnly} onChange={(event) => {
+                      setPage(1);
+                      setCustomizableOnly(event.target.checked);
+                    }} className="w-4 h-4 rounded border-slate-300 text-[#4F6BFF] focus:ring-[#4F6BFF]" />
                     <span className="text-sm text-slate-700 group-hover:text-slate-900">{t('marketplace.filterCustomizable')}</span>
                   </label>
                 </div>
@@ -216,6 +257,7 @@ export function MarketplacePage() {
               <button
                 key={category.slug}
                 onClick={() => {
+                  setPage(1);
                   setSelectedCategory(category.slug);
                   setSelectedSubcategory(null);
                 }}
@@ -232,7 +274,10 @@ export function MarketplacePage() {
               {currentCategory.children.map((subcategory) => (
                 <button
                   key={subcategory.slug}
-                  onClick={() => setSelectedSubcategory(selectedSubcategory === subcategory.slug ? null : subcategory.slug)}
+                  onClick={() => {
+                    setPage(1);
+                    setSelectedSubcategory(selectedSubcategory === subcategory.slug ? null : subcategory.slug);
+                  }}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${selectedSubcategory === subcategory.slug ? 'bg-[#7C3AED] text-white' : 'bg-white text-slate-600 hover:text-[#7C3AED] hover:bg-[#F3E8FF] border border-slate-200 hover:border-[#7C3AED]/30'}`}
                 >
                   {subcategory.name}
@@ -244,9 +289,12 @@ export function MarketplacePage() {
 
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-slate-600">
-            <span className="font-bold text-slate-900">{products.length}</span> {selectedCategory === 'all' ? t('marketplace.productsAvailable') : `products in ${currentCategory?.name}`}
+            <span className="font-bold text-slate-900">{pagination.total}</span> {selectedCategory === 'all' ? t('marketplace.productsAvailable') : `products in ${currentCategory?.name}`}
           </p>
-          <select value={sort} onChange={(event) => setSort(event.target.value)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#4F6BFF] text-slate-700 bg-white">
+          <select value={sort} onChange={(event) => {
+            setPage(1);
+            setSort(event.target.value);
+          }} className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#4F6BFF] text-slate-700 bg-white">
             <option value="">{t('marketplace.sortRelevance')}</option>
             <option value="price_low">{t('marketplace.sortPriceLow')}</option>
             <option value="price_high">{t('marketplace.sortPriceHigh')}</option>
@@ -298,6 +346,30 @@ export function MarketplacePage() {
                 </div>
               </Link>
             ))}
+          </div>
+        )}
+
+        {!isLoading && pagination.last_page > 1 && (
+          <div className="mt-6 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
+            <button
+              type="button"
+              onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+              disabled={pagination.current_page <= 1}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-semibold text-slate-600">
+              Page {pagination.current_page} of {pagination.last_page}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((currentPage) => Math.min(pagination.last_page, currentPage + 1))}
+              disabled={pagination.current_page >= pagination.last_page}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              Next
+            </button>
           </div>
         )}
 

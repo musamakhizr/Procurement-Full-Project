@@ -27,7 +27,7 @@ class CatalogController extends Controller
         $sort = $request->string('sort')->toString();
 
         $products = Product::query()
-            ->with(['category.parent', 'priceTiers', 'productImages'])
+            ->with(['category.parent', 'priceTiers'])
             ->where('is_active', true)
             ->when($request->filled('category'), function ($query) use ($request) {
                 $categorySlug = $request->string('category')->toString();

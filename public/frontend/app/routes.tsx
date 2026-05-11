@@ -8,8 +8,10 @@ import { SignInPage } from './pages/SignInPage';
 import { GetStartedPage } from './pages/GetStartedPage';
 import { SourcingPage } from './pages/SourcingPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
+import { MyQuoteRequestsPage } from './pages/MyQuoteRequestsPage';
 import { AdminProductsPage } from './pages/AdminProductsPage';
 import { AdminRequestsPage } from './pages/AdminRequestsPage';
+import { AdminQuoteRequestsPage } from './pages/AdminQuoteRequestsPage';
 import { ProcurementListPage } from './pages/ProcurementListPage';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -79,6 +81,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'my-quote-requests',
+        element: (
+          <ProtectedRoute>
+            <MyQuoteRequestsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'sign-in',
         Component: SignInPage,
       },
@@ -91,6 +101,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute adminOnly>
             <AdminRequestsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'admin/quote-requests',
+        element: (
+          <ProtectedRoute adminOnly>
+            <AdminQuoteRequestsPage />
           </ProtectedRoute>
         ),
       },
