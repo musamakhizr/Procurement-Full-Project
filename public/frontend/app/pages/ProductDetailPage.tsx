@@ -315,8 +315,8 @@ export function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
-      <div className="max-w-[1400px] mx-auto px-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600 mb-8">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 mb-8">
           <Link to="/" className="hover:text-[#4F6BFF]">{t('product.home')}</Link>
           <ChevronRight className="w-4 h-4" />
           <Link to="/marketplace" className="hover:text-[#4F6BFF]">{t('product.catalog')}</Link>
@@ -324,14 +324,14 @@ export function ProductDetailPage() {
           <span className="text-slate-900 font-medium">{product.name}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 mb-12">
           <div>
             <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden mb-4">
               <div className="aspect-square bg-slate-100">
                 <img src={heroImage} alt={product.name} className="w-full h-full object-cover" />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {galleryImages.map((image, index) => (
                 <button
                   key={image}
@@ -362,7 +362,7 @@ export function ProductDetailPage() {
                 <span className="font-semibold text-slate-900">{product.in_stock ? t('product.inStock') : 'Out of Stock'}</span>
                 <span className="text-slate-600">({product.stock_quantity} {t('marketplace.units')} {t('product.available')})</span>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div className="flex items-center gap-2 text-slate-700">
                   <Package className="w-4 h-4 text-slate-400" />
                   <span className="font-medium">{t('marketplace.moq')}</span>
@@ -649,7 +649,7 @@ export function ProductDetailPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <button onClick={() => void handleAddToList()} className="flex-1 py-4 bg-[#4F6BFF] text-white font-bold rounded-xl hover:bg-[#3D56E0] transition-colors">
                   {isInList(product.id, selectedVariant?.id ?? null) ? t('marketplace.addedToList') : t('marketplace.addToList')}
                 </button>
@@ -660,7 +660,7 @@ export function ProductDetailPage() {
             </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button onClick={handleQuote} className="flex-1 flex items-center justify-center gap-2 py-3 border-2 border-slate-200 text-slate-700 font-semibold rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors">
                 <MessageSquare className="w-4 h-4" />
                 {t('product.contactSupport')}

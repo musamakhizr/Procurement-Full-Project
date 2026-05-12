@@ -1,4 +1,4 @@
-import { Menu, Globe, User, ShoppingCart, Settings, LogOut } from 'lucide-react';
+import { Menu, User, ShoppingCart, Settings, LogOut, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,20 +11,26 @@ export function Header() {
   const { itemCount } = useProcurementList();
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  const closeMenus = () => {
+    setShowUserMenu(false);
+    setShowMobileMenu(false);
+  };
 
   const handleSignOut = async () => {
     await signOut();
-    setShowUserMenu(false);
+    closeMenus();
     navigate('/');
   };
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-      <div className="max-w-[1400px] mx-auto px-6 py-4">
-        <div className="flex items-center justify-between gap-6">
+      <div className="max-w-[1400px] mx-auto px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
           {/* Logo */}
-          <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-5">
+            <Link to="/" className="flex shrink-0 items-center gap-2">
               <div className="w-8 h-8 bg-[#4F6BFF] rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">P</span>
               </div>
@@ -32,7 +38,7 @@ export function Header() {
             </Link>
 
             {/* Main Navigation */}
-            <nav className="hidden lg:flex items-center gap-6">
+            <nav className="hidden min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] lg:flex xl:gap-4 [&::-webkit-scrollbar]:hidden">
               {isAuthenticated ? (
                 <>
                   <Link to="/dashboard" className="text-sm text-slate-700 hover:text-[#4F6BFF] transition-colors font-medium">
@@ -90,7 +96,7 @@ export function Header() {
           </div>
 
           {/* Right Side Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             {/* Language Switcher */}
             <div className="relative flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               <button
@@ -105,19 +111,20 @@ export function Header() {
               </button>
               <button
                 onClick={() => setLanguage('zh')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-md text-[0px] font-medium transition-colors ${
                   language === 'zh'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
+                <span className="text-sm">{'\u4E2D\u6587'}</span>
                 中文
               </button>
             </div>
 
             {/* Procurement List - Only show when authenticated */}
             {isAuthenticated && (
-              <Link to="/procurement-list" className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-700 hover:text-[#4F6BFF] rounded-lg font-semibold transition-colors text-sm relative">
+              <Link to="/procurement-list" className="relative hidden items-center gap-2 whitespace-nowrap px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:text-[#4F6BFF] md:flex xl:px-4">
                 <ShoppingCart className="w-4 h-4" />
                 <span className="hidden lg:inline">{t('header.procurementList')}</span>
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#4F6BFF] text-white text-xs font-bold rounded-full flex items-center justify-center">{itemCount}</span>
@@ -129,7 +136,7 @@ export function Header() {
               <div className="relative">
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-semibold transition-colors text-sm"
+                  className="hidden items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 md:flex xl:px-4"
                 >
                   <User className="w-4 h-4" />
                   <span>{user?.name || t('header.account')}</span>
@@ -182,21 +189,71 @@ export function Header() {
               </div>
             ) : (
               <>
-                <Link to="/sign-in" className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-semibold transition-colors text-sm">
+                <Link to="/sign-in" className="hidden items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 md:flex xl:px-4">
                   {t('header.signIn')}
                 </Link>
-                <Link to="/get-started" className="px-5 py-2 bg-[#4F6BFF] text-white rounded-lg font-semibold hover:bg-[#3F5AF5] transition-all shadow-sm text-sm">
+                <Link to="/get-started" className="whitespace-nowrap rounded-lg bg-[#4F6BFF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#3F5AF5] xl:px-5">
                   {t('header.getStarted')}
                 </Link>
               </>
             )}
 
             {/* Mobile Menu */}
-            <button className="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <Menu className="w-5 h-5 text-slate-600" />
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu((isOpen) => !isOpen)}
+              className="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label="Toggle navigation menu"
+              aria-expanded={showMobileMenu}
+            >
+              {showMobileMenu ? <X className="w-5 h-5 text-slate-600" /> : <Menu className="w-5 h-5 text-slate-600" />}
             </button>
           </div>
         </div>
+
+        {showMobileMenu && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg lg:hidden">
+            <nav className="grid gap-1 text-sm font-semibold text-slate-700">
+              {isAuthenticated ? (
+                <>
+                  <Link to="/dashboard" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.dashboard')}</Link>
+                  <Link to="/marketplace" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.catalog')}</Link>
+                  <Link to="/procurement-list" onClick={closeMenus} className="flex items-center justify-between rounded-xl px-4 py-3 hover:bg-slate-50">
+                    <span>{t('header.myList')}</span>
+                    <span className="rounded-full bg-[#4F6BFF] px-2 py-0.5 text-xs text-white">{itemCount}</span>
+                  </Link>
+                  <Link to="/my-requests" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.requests')}</Link>
+                  <Link to="/my-quote-requests" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">Quotes</Link>
+                  {user?.is_admin && (
+                    <>
+                      <div className="my-1 border-t border-slate-100" />
+                      <Link to="/admin/requests" onClick={closeMenus} className="flex items-center gap-2 rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">
+                        <Settings className="w-4 h-4" />
+                        Admin Requests
+                      </Link>
+                      <Link to="/admin/quote-requests" onClick={closeMenus} className="rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">Admin Quotes</Link>
+                      <Link to="/admin/products" onClick={closeMenus} className="rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">Admin Products</Link>
+                    </>
+                  )}
+                  <div className="my-1 border-t border-slate-100" />
+                  <button onClick={handleSignOut} className="flex items-center gap-2 rounded-xl px-4 py-3 text-left text-red-600 hover:bg-red-50">
+                    <LogOut className="w-4 h-4" />
+                    {t('header.signOut')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/marketplace" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.marketplace')}</Link>
+                  <Link to="/sourcing" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.sourcing')}</Link>
+                  <Link to="/#how-it-works" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.howItWorks')}</Link>
+                  <div className="my-1 border-t border-slate-100" />
+                  <Link to="/sign-in" onClick={closeMenus} className="rounded-xl px-4 py-3 hover:bg-slate-50">{t('header.signIn')}</Link>
+                  <Link to="/get-started" onClick={closeMenus} className="rounded-xl bg-[#4F6BFF] px-4 py-3 text-center text-white hover:bg-[#3F5AF5]">{t('header.getStarted')}</Link>
+                </>
+              )}
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );

@@ -12,6 +12,7 @@ class ProductListResource extends JsonResource
     {
         $tierOne = $this->priceTiers->get(0);
         $tierTwo = $this->priceTiers->get(1) ?? $tierOne;
+        $hasAttribute = fn (string $attribute) => array_key_exists($attribute, $this->resource->getAttributes());
 
         return [
             'id' => $this->id,
@@ -20,7 +21,7 @@ class ProductListResource extends JsonResource
             'category' => $this->category?->name,
             'category_slug' => $this->category?->parent?->slug ?? $this->category?->slug,
             'subcategory_slug' => $this->category?->parent ? $this->category?->slug : null,
-            'image' => ProductImageUrl::fromStoredPath($this->image_url),
+            'image' => ProductImageUrl::fromStoredPath($this->image_url, false),
             'image_source_url' => $this->source_image_url ?? $this->image_url,
             'cat_from_api' => $this->cat_from_api,
             'moq' => $this->moq,
@@ -30,7 +31,7 @@ class ProductListResource extends JsonResource
             'stock_quantity' => $this->stock_quantity,
             'status' => $this->stock_quantity <= 1000 ? 'low-stock' : 'active',
             'import_status' => $this->import_status,
-            'import_error' => $this->import_error,
+            'import_error' => $this->when($hasAttribute('import_error'), $this->import_error),
             'import_total_tasks' => $this->import_total_tasks,
             'import_completed_tasks' => $this->import_completed_tasks,
             'last_updated' => $this->updated_at?->toDateString(),

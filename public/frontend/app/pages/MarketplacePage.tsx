@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Search, SlidersHorizontal, Grid3x3, List, Package, Clock, ChevronRight, Home, Check } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -26,6 +26,50 @@ type CategoryNode = {
   }>;
 };
 
+type CatalogCachePayload = {
+  data: ProductSummary[];
+  meta: PaginationState;
+  cachedAt: number;
+};
+
+const CATALOG_CACHE_TTL_MS = 30_000;
+const CATEGORIES_CACHE_KEY = 'catalog:categories:v1';
+const CATALOG_PAGE_SIZE = 12;
+
+function productCacheKey(params: Record<string, string | number | boolean | undefined>) {
+  const query = new URLSearchParams();
+
+  Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+    .forEach(([key, value]) => query.set(key, String(value)));
+
+  return `catalog:products:${query.toString()}`;
+}
+
+function readProductCache(key: string): CatalogCachePayload | null {
+  try {
+    const cached = window.sessionStorage.getItem(key);
+    const payload = cached ? JSON.parse(cached) as CatalogCachePayload : null;
+
+    if (!payload || Date.now() - payload.cachedAt > CATALOG_CACHE_TTL_MS) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeProductCache(key: string, payload: Omit<CatalogCachePayload, 'cachedAt'>) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ ...payload, cachedAt: Date.now() }));
+  } catch {
+    // Storage can be disabled or full; catalog still works without the warm cache.
+  }
+}
+
 export function MarketplacePage() {
   const { t } = useLanguage();
   const { addItem, isInList } = useProcurementList();
@@ -36,6 +80,8 @@ export function MarketplacePage() {
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') ?? '');
@@ -46,17 +92,47 @@ export function MarketplacePage() {
   const [verifiedOnly, setVerifiedOnly] = useState(searchParams.get('verified_only') === '1');
   const [customizableOnly, setCustomizableOnly] = useState(searchParams.get('customizable_only') === '1');
   const [sort, setSort] = useState(searchParams.get('sort') ?? '');
-  const [page, setPage] = useState(Math.max(1, Number(searchParams.get('page') ?? '1') || 1));
+  const [page, setPage] = useState(1);
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery.trim());
   const [pagination, setPagination] = useState<PaginationState>({
-    current_page: page,
+    current_page: 1,
     last_page: 1,
-    per_page: 12,
+    per_page: CATALOG_PAGE_SIZE,
     total: 0,
   });
+  const hasLoadedProducts = useRef(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const requestIdRef = useRef(0);
+
+  const appendProducts = (nextProducts: ProductSummary[]) => {
+    setProducts((currentProducts) => {
+      const existingProductIds = new Set(currentProducts.map((product) => product.id));
+      const newProducts = nextProducts.filter((product) => !existingProductIds.has(product.id));
+
+      return [...currentProducts, ...newProducts];
+    });
+  };
 
   useEffect(() => {
-    fetchCategories().then(setCategories);
+    try {
+      const cachedCategories = window.sessionStorage.getItem(CATEGORIES_CACHE_KEY);
+
+      if (cachedCategories) {
+        setCategories(JSON.parse(cachedCategories) as CategoryNode[]);
+      }
+    } catch {
+      // Ignore cache parse errors and fetch fresh categories.
+    }
+
+    fetchCategories().then((categoryResponse) => {
+      setCategories(categoryResponse);
+
+      try {
+        window.sessionStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(categoryResponse));
+      } catch {
+        // Non-critical cache warmup only.
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -69,25 +145,67 @@ export function MarketplacePage() {
 
   useEffect(() => {
     const loadProducts = async () => {
-      setIsLoading(true);
+      const requestId = ++requestIdRef.current;
+      const params = {
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        subcategory: selectedSubcategory ?? undefined,
+        search: debouncedSearchQuery || undefined,
+        moq_max: moqMax || undefined,
+        lead_time_max: leadTimeMax || undefined,
+        verified_only: verifiedOnly || undefined,
+        customizable_only: customizableOnly || undefined,
+        sort: sort || undefined,
+        page,
+        per_page: CATALOG_PAGE_SIZE,
+      };
+      const cacheKey = productCacheKey(params);
+      const cachedProducts = readProductCache(cacheKey);
+
+      if (cachedProducts) {
+        if (page === 1) {
+          setProducts(cachedProducts.data);
+        } else {
+          appendProducts(cachedProducts.data);
+        }
+
+        setPagination(cachedProducts.meta);
+        hasLoadedProducts.current = true;
+        setIsLoading(false);
+        setIsRefreshing(page === 1);
+        setIsLoadingMore(false);
+
+        if (page > 1) {
+          return;
+        }
+      } else {
+        const shouldShowFullLoader = !hasLoadedProducts.current;
+        setIsLoading(shouldShowFullLoader && page === 1);
+        setIsRefreshing(!shouldShowFullLoader && page === 1);
+        setIsLoadingMore(page > 1);
+      }
 
       try {
-        const response = await fetchProducts({
-          category: selectedCategory !== 'all' ? selectedCategory : undefined,
-          subcategory: selectedSubcategory ?? undefined,
-          search: debouncedSearchQuery || undefined,
-          moq_max: moqMax || undefined,
-          lead_time_max: leadTimeMax || undefined,
-          verified_only: verifiedOnly || undefined,
-          customizable_only: customizableOnly || undefined,
-          sort: sort || undefined,
-          page,
-        });
+        const response = await fetchProducts(params);
 
-        setProducts(response.data);
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+
+        if (page === 1) {
+          setProducts(response.data);
+        } else {
+          appendProducts(response.data);
+        }
+
         setPagination(response.meta);
+        hasLoadedProducts.current = true;
+        writeProductCache(cacheKey, { data: response.data, meta: response.meta });
       } finally {
-        setIsLoading(false);
+        if (requestId === requestIdRef.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setIsLoadingMore(false);
+        }
       }
     };
 
@@ -101,11 +219,35 @@ export function MarketplacePage() {
     if (verifiedOnly) nextParams.set('verified_only', '1');
     if (customizableOnly) nextParams.set('customizable_only', '1');
     if (sort) nextParams.set('sort', sort);
-    if (page > 1) nextParams.set('page', String(page));
 
     setSearchParams(nextParams, { replace: true });
     void loadProducts();
   }, [customizableOnly, debouncedSearchQuery, leadTimeMax, moqMax, page, selectedCategory, selectedSubcategory, setSearchParams, sort, verifiedOnly]);
+
+  useEffect(() => {
+    const trigger = loadMoreRef.current;
+
+    if (!trigger || isLoading || isRefreshing || isLoadingMore || pagination.current_page >= pagination.last_page) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) {
+          return;
+        }
+
+        setPage((currentPage) => Math.min(currentPage + 1, pagination.last_page));
+      },
+      {
+        rootMargin: '600px 0px',
+      },
+    );
+
+    observer.observe(trigger);
+
+    return () => observer.disconnect();
+  }, [isLoading, isLoadingMore, isRefreshing, pagination.current_page, pagination.last_page]);
 
   const normalizedCategories = useMemo(
     () => [{ id: 0, name: t('marketplace.categoryAll'), slug: 'all', children: [] }, ...categories],
@@ -113,6 +255,7 @@ export function MarketplacePage() {
   );
 
   const currentCategory = normalizedCategories.find((category) => category.slug === selectedCategory);
+  const currencySymbol = '\u00A5';
 
   const handleAddToList = async (product: ProductSummary, event: React.MouseEvent) => {
     event.preventDefault();
@@ -138,7 +281,7 @@ export function MarketplacePage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
-      <div className="max-w-[1400px] mx-auto px-6">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
         {selectedCategory !== 'all' && (
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <Link to="/" className="hover:text-[#4F6BFF] transition-colors flex items-center gap-1">
@@ -172,7 +315,7 @@ export function MarketplacePage() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-3.5 mb-5">
-          <div className="flex gap-2.5 items-center">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -187,12 +330,12 @@ export function MarketplacePage() {
               />
             </div>
 
-            <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg font-medium text-sm transition-colors ${showFilters ? 'bg-[#EEF2FF] border-[#4F6BFF] text-[#4F6BFF]' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}>
+            <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg font-medium text-sm transition-colors ${showFilters ? 'bg-[#EEF2FF] border-[#4F6BFF] text-[#4F6BFF]' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}>
               <SlidersHorizontal className="w-4 h-4" />
               <span className="hidden sm:inline">{t('marketplace.filters')}</span>
             </button>
 
-            <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
+            <div className="flex justify-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
               <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white text-[#4F6BFF] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 <Grid3x3 className="w-4 h-4" />
               </button>
@@ -203,7 +346,7 @@ export function MarketplacePage() {
           </div>
 
           {showFilters && (
-            <div className="pt-4 mt-4 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="pt-4 mt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">{t('marketplace.filterMOQ')}</label>
                 <select value={moqMax} onChange={(event) => {
@@ -228,9 +371,9 @@ export function MarketplacePage() {
                   <option value="999">7+ days</option>
                 </select>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">{t('marketplace.filterOptions')}</label>
-                <div className="flex gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input type="checkbox" checked={verifiedOnly} onChange={(event) => {
                       setPage(1);
@@ -287,9 +430,10 @@ export function MarketplacePage() {
           )}
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <p className="text-sm text-slate-600">
             <span className="font-bold text-slate-900">{pagination.total}</span> {selectedCategory === 'all' ? t('marketplace.productsAvailable') : `products in ${currentCategory?.name}`}
+            {isRefreshing && <span className="ml-2 text-xs font-semibold text-[#4F6BFF]">Updating...</span>}
           </p>
           <select value={sort} onChange={(event) => {
             setPage(1);
@@ -303,14 +447,14 @@ export function MarketplacePage() {
           </select>
         </div>
 
-        {isLoading ? (
+        {isLoading && products.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500">Loading catalog...</div>
         ) : (
           <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' : 'space-y-4'}>
             {products.map((product) => (
               <Link key={product.id} to={`/marketplace/product/${product.id}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block">
                 <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
-                  <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                  <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
                 </div>
                 <div className="p-5">
                   <div className="text-xs text-[#7C3AED] font-semibold mb-2">{product.category}</div>
@@ -331,7 +475,7 @@ export function MarketplacePage() {
 
                   <div className="mb-4">
                     <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('product.unitPrice')}</div>
-                    <div className="font-bold text-slate-900 text-2xl">¥{product.unit_price.toFixed(2)}</div>
+                    <div className="font-bold text-slate-900 text-2xl">{currencySymbol}{product.unit_price.toFixed(2)}</div>
                   </div>
 
                   <div className="flex gap-2">
@@ -349,35 +493,35 @@ export function MarketplacePage() {
           </div>
         )}
 
-        {!isLoading && pagination.last_page > 1 && (
-          <div className="mt-6 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
-            <button
-              type="button"
-              onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
-              disabled={pagination.current_page <= 1}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:text-slate-300"
-            >
-              Previous
-            </button>
-            <span className="text-sm font-semibold text-slate-600">
-              Page {pagination.current_page} of {pagination.last_page}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((currentPage) => Math.min(pagination.last_page, currentPage + 1))}
-              disabled={pagination.current_page >= pagination.last_page}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#4F6BFF] hover:text-[#4F6BFF] disabled:cursor-not-allowed disabled:text-slate-300"
-            >
-              Next
-            </button>
+        {!isLoading && products.length > 0 && (
+          <div ref={loadMoreRef} className="mt-6 rounded-xl border border-slate-200 bg-white p-4 text-center">
+            {pagination.current_page < pagination.last_page ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-slate-600">
+                  Showing {products.length} of {pagination.total} products
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPage((currentPage) => Math.min(pagination.last_page, currentPage + 1))}
+                  disabled={isLoadingMore}
+                  className="rounded-lg bg-[#4F6BFF] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#3D56E0] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {isLoadingMore ? 'Loading more products...' : 'Load more'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-slate-500">
+                All {pagination.total} products loaded
+              </p>
+            )}
           </div>
         )}
 
-        <div className="mt-12 bg-gradient-to-r from-[#EEF2FF] to-[#F3E8FF] rounded-xl border border-slate-200 p-8">
+        <div className="mt-12 bg-gradient-to-r from-[#EEF2FF] to-[#F3E8FF] rounded-xl border border-slate-200 p-5 sm:p-8">
           <div className="max-w-2xl mx-auto text-center">
             <h3 className="text-xl font-bold text-slate-900 mb-2">{t('marketplace.supportTitle')}</h3>
             <p className="text-slate-700 text-sm mb-5">{t('marketplace.supportSubtitle')}</p>
-            <div className="flex gap-3 justify-center">
+            <div className="flex flex-col gap-3 justify-center sm:flex-row">
               <Link to="/sourcing" className="px-5 py-2.5 bg-[#4F6BFF] text-white font-semibold rounded-lg hover:bg-[#3D56E0] transition-colors text-sm">
                 {t('marketplace.customSourcingBtn')}
               </Link>
