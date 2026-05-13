@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
 use App\Http\Requests\Admin\StoreProductRequest;
 use App\Http\Requests\Admin\UpdateProductRequest;
 use App\Http\Resources\ProductDetailResource;
@@ -9,8 +10,11 @@ use App\Http\Resources\ProductListResource;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\ImportedProductSyncService;
+use App\Services\SpreadsheetProductLinkExtractor;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class AdminProductController extends Controller
 {
@@ -39,7 +43,8 @@ class AdminProductController extends Controller
                 $query->where(function ($searchQuery) use ($search) {
                     $searchQuery
                         ->where('name', 'like', "%{$search}%")
-                        ->orWhere('sku', 'like', "%{$search}%");
+                        ->orWhere('sku', 'like', "%{$search}%")
+                        ->orWhere('cat_from_api', 'like', "%{$search}%");
                 });
             })
             ->latest('updated_at')
@@ -90,6 +95,35 @@ class AdminProductController extends Controller
         return (new ProductDetailResource($product))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function importSpreadsheet(Request $request, SpreadsheetProductLinkExtractor $linkExtractor): JsonResponse
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls,csv,txt'],
+        ]);
+
+        try {
+            $links = $linkExtractor->extractFromUploadedFile($validated['file']);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        if ($links === []) {
+            return response()->json([
+                'message' => 'No supported Taobao, 1688, Tmall, or JD product links were found in this file.',
+            ], 422);
+        }
+
+        ImportMarketplaceProductsFromSpreadsheet::dispatch($links, $request->user()?->getKey());
+
+        return response()->json([
+            'message' => 'Product import has started. Products will be fetched, inserted, and processed one by one in the background.',
+            'queued_count' => count($links),
+            'links' => $links,
+        ], 202);
     }
 
     public function update(UpdateProductRequest $request, Product $product)

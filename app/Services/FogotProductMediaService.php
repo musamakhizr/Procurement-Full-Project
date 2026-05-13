@@ -228,11 +228,32 @@ class FogotProductMediaService
         $retryTimes = max((int) config('services.fogot.retry_times', 0), 0);
         $retrySleepMs = max((int) config('services.fogot.retry_sleep_ms', 500), 0);
 
-        $response = Http::acceptJson()
-            ->timeout($timeout)
-            ->connectTimeout($connectTimeout)
-            ->retry($retryTimes, $retrySleepMs)
-            ->post(rtrim((string) config('services.fogot.base_url'), '/').$path, $payload);
+        $attempts = $retryTimes + 1;
+        $response = null;
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                $response = Http::acceptJson()
+                    ->timeout($timeout)
+                    ->connectTimeout($connectTimeout)
+                    ->post(rtrim((string) config('services.fogot.base_url'), '/').$path, $payload);
+
+                if (! $response->serverError() && $response->status() !== 429) {
+                    break;
+                }
+            } catch (Throwable $exception) {
+                $lastException = $exception;
+            }
+
+            if ($attempt < $attempts && $retrySleepMs > 0) {
+                usleep($retrySleepMs * 1000);
+            }
+        }
+
+        if ($response === null) {
+            throw new RuntimeException("Fogot API request failed for [{$path}]: {$lastException?->getMessage()}");
+        }
 
         if ($response->failed()) {
             throw new RuntimeException("Fogot API request failed for [{$path}] with status {$response->status()}.");

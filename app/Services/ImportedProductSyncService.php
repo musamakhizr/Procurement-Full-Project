@@ -27,14 +27,7 @@ class ImportedProductSyncService
             return;
         }
 
-        $product->forceFill([
-            'import_status' => 'pending',
-            'import_error' => null,
-            'source_payload' => $this->sanitizeImportSource($importSource),
-            'import_api_debug' => null,
-            'import_total_tasks' => 0,
-            'import_completed_tasks' => 0,
-        ])->save();
+        $this->prepareForProcessing($product, $importSource);
 
         if (app()->runningUnitTests()) {
             $this->process($product);
@@ -43,6 +36,37 @@ class ImportedProductSyncService
         }
 
         ProcessImportedProductMedia::dispatch($product->getKey());
+    }
+
+    public function processSequentially(Product $product, ?array $importSource): void
+    {
+        if (! is_array($importSource) || $importSource === []) {
+            return;
+        }
+
+        $this->prepareForProcessing($product, $importSource);
+        $this->process($product->fresh() ?? $product);
+    }
+
+    public function preparePending(Product $product, ?array $importSource): void
+    {
+        if (! is_array($importSource) || $importSource === []) {
+            return;
+        }
+
+        $this->prepareForProcessing($product, $importSource);
+    }
+
+    private function prepareForProcessing(Product $product, array $importSource): void
+    {
+        $product->forceFill([
+            'import_status' => 'pending',
+            'import_error' => null,
+            'source_payload' => $this->sanitizeImportSource($importSource),
+            'import_api_debug' => null,
+            'import_total_tasks' => 0,
+            'import_completed_tasks' => 0,
+        ])->save();
     }
 
     public function dispatchQueuedTasks(Product $product): void
@@ -282,6 +306,8 @@ class ImportedProductSyncService
      */
     private function sanitizeImportSource(array $importSource): array
     {
+        $descriptionImages = $this->descriptionImageUrlsFromImportSource($importSource);
+
         return [
             'title' => data_get($importSource, 'title'),
             'platform' => data_get($importSource, 'platform'),
@@ -293,7 +319,9 @@ class ImportedProductSyncService
             'description' => data_get($importSource, 'description'),
             'description_html' => data_get($importSource, 'description_html'),
             'images' => $this->normalizeUrlArray(data_get($importSource, 'images', [])),
-            'description_images' => $this->normalizeUrlArray(data_get($importSource, 'description_images', [])),
+            'original_images' => $this->normalizeUrlArray(data_get($importSource, 'images', [])),
+            'description_images' => $descriptionImages,
+            'original_description_images' => $descriptionImages,
             'variants' => collect(data_get($importSource, 'variants', []))
                 ->filter(fn ($variant) => is_array($variant))
                 ->values()
@@ -663,6 +691,51 @@ class ImportedProductSyncService
             ->map(fn ($url) => $this->normalizeUrlValue($url))
             ->filter(fn ($url) => is_string($url) && ! $this->shouldIgnoreImageUrl($url))
             ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $importSource
+     * @return array<int, string>
+     */
+    private function descriptionImageUrlsFromImportSource(array $importSource): array
+    {
+        return collect()
+            ->merge($this->normalizeUrlArray(data_get($importSource, 'original_description_images', [])))
+            ->merge($this->normalizeUrlArray(data_get($importSource, 'description_images', [])))
+            ->merge($this->normalizeUrlArray(data_get($importSource, 'desc_img', [])))
+            ->merge($this->extractDescriptionHtmlImageUrls(data_get($importSource, 'description_html')))
+            ->merge($this->extractDescriptionHtmlImageUrls(data_get($importSource, 'desc')))
+            ->filter(fn (string $url) => ! $this->shouldIgnoreImageUrl($url))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractDescriptionHtmlImageUrls(mixed $descriptionHtml): array
+    {
+        if (! is_string($descriptionHtml) || trim($descriptionHtml) === '') {
+            return [];
+        }
+
+        preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', html_entity_decode($descriptionHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $matches);
+
+        return collect($matches[1] ?? [])
+            ->map(function ($url) {
+                if (! is_string($url) || trim($url) === '') {
+                    return null;
+                }
+
+                $trimmed = trim($url);
+
+                return Str::startsWith($trimmed, '//') ? 'https:'.$trimmed : $trimmed;
+            })
+            ->map(fn ($url) => $this->normalizeUrlValue($url))
+            ->filter()
             ->values()
             ->all();
     }

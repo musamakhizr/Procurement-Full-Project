@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
+import { formatApiCategoryL1 } from '../utils/category';
 
 const EMPTY_FORM = {
   name: '',
@@ -22,7 +23,8 @@ type SaveNotice = {
 };
 
 export function AdminProductsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const spreadsheetInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -42,6 +44,7 @@ export function AdminProductsPage() {
   const [formError, setFormError] = useState('');
   const [productLink, setProductLink] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isSpreadsheetImporting, setIsSpreadsheetImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [previewProduct, setPreviewProduct] = useState<ImportedMarketplaceProduct | null>(null);
   const [importedProduct, setImportedProduct] = useState<ImportedMarketplaceProduct | null>(null);
@@ -237,6 +240,32 @@ export function AdminProductsPage() {
       default:
         return <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full">{status}</span>;
     }
+  };
+
+  const getImportJobBadge = (product: ProductSummary) => {
+    if (!product.import_status) {
+      return <span className="text-xs font-semibold text-slate-400">Manual</span>;
+    }
+
+    const completed = product.import_completed_tasks ?? 0;
+    const total = product.import_total_tasks ?? 0;
+    const progress = total > 0 ? `${completed}/${total}` : product.import_status;
+    const tone = product.import_status === 'completed' && !product.import_error
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : product.import_status === 'failed' || product.import_error
+        ? 'bg-amber-50 text-amber-700 border-amber-200'
+        : 'bg-blue-50 text-blue-700 border-blue-200';
+
+    return (
+      <div className="max-w-56">
+        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold capitalize ${tone}`}>
+          {product.import_status}: {progress}
+        </span>
+        {product.import_error && (
+          <p className="mt-1 line-clamp-2 text-[11px] text-amber-700" title={product.import_error}>{product.import_error}</p>
+        )}
+      </div>
+    );
   };
 
   const handleCreateProduct = async () => {
@@ -449,6 +478,37 @@ export function AdminProductsPage() {
     }
   };
 
+  const handleSpreadsheetImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setIsSpreadsheetImporting(true);
+    setSaveNotice({
+      tone: 'info',
+      message: `Uploading ${file.name}. Product links will be queued after validation.`,
+    });
+
+    try {
+      const response = await importAdminProductsSpreadsheet(file);
+      setSaveNotice({
+        tone: 'success',
+        message: `${response.queued_count} product link${response.queued_count === 1 ? '' : 's'} queued. The importer will fetch, insert, and complete all 4 API processing steps one product at a time.`,
+      });
+      await loadAdminData(currentPage, searchQuery);
+    } catch (error: any) {
+      setSaveNotice({
+        tone: 'error',
+        message: error?.response?.data?.message ?? 'Unable to import products from this file.',
+      });
+    } finally {
+      setIsSpreadsheetImporting(false);
+      event.target.value = '';
+    }
+  };
+
   const pageNumbers = useMemo(() => {
     return Array.from({ length: pagination.last_page }, (_, index) => index + 1);
   }, [pagination.last_page]);
@@ -511,7 +571,21 @@ export function AdminProductsPage() {
           <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
             <div className="flex-1 w-full md:w-auto relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="text" placeholder={t('admin.searchProducts')} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#4F6BFF] text-slate-900" /></div>
             <div className="flex gap-3 w-full md:w-auto">
-              <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Upload className="w-4 h-4" /><span className="hidden md:inline">{t('admin.import')}</span></button>
+              <input
+                ref={spreadsheetInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,.txt"
+                className="hidden"
+                onChange={(event) => void handleSpreadsheetImport(event)}
+              />
+              <button
+                onClick={() => spreadsheetInputRef.current?.click()}
+                disabled={isSpreadsheetImporting}
+                className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden md:inline">{isSpreadsheetImporting ? 'Uploading...' : t('admin.import')}</span>
+              </button>
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Download className="w-4 h-4" /><span className="hidden md:inline">{t('admin.export')}</span></button>
               <button onClick={() => { setEditingProductId(null); setForm(EMPTY_FORM); setProductLink(''); setImportError(''); setPreviewProduct(null); setImportedProduct(null); setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
             </div>
@@ -530,6 +604,7 @@ export function AdminProductsPage() {
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">MOQ</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.priceRange')}</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.status')}</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Import Job</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.actions')}</th>
                 </tr>
               </thead>
@@ -538,11 +613,14 @@ export function AdminProductsPage() {
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono font-semibold text-slate-700">{product.sku}</span></td>
                     <td className="px-6 py-4"><div className="text-sm font-semibold text-slate-900">{product.name}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-600">{product.category}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-slate-600">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</span>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className={`text-sm font-semibold ${product.status === 'low-stock' ? 'text-amber-600' : 'text-slate-900'}`}>{product.stock_quantity.toLocaleString()}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-600">{product.moq}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-semibold text-slate-900">{product.base_price_range}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(product.status)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{getImportJobBadge(product)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <button onClick={() => void handleEditProduct(product)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit product">

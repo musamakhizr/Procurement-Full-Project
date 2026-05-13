@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useProcurementList } from '../contexts/ProcurementListContext';
 import { fetchCategories, fetchProducts, ProductSummary } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { formatApiCategoryL1 } from '../utils/category';
 
 type ViewMode = 'grid' | 'list';
 
@@ -71,7 +72,7 @@ function writeProductCache(key: string, payload: Omit<CatalogCachePayload, 'cach
 }
 
 export function MarketplacePage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { addItem, isInList } = useProcurementList();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -457,7 +458,7 @@ export function MarketplacePage() {
                   <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
                 </div>
                 <div className="p-5">
-                  <div className="text-xs text-[#7C3AED] font-semibold mb-2">{product.category}</div>
+                  <div className="text-xs text-[#7C3AED] font-semibold mb-2">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</div>
                   <h3 className="font-bold text-slate-900 mb-3 group-hover:text-[#4F6BFF] transition-colors line-clamp-2">{product.name}</h3>
 
                   <div className="space-y-1.5 mb-3 pb-3 border-b border-slate-100">

@@ -104,8 +104,9 @@ class Product extends Model
     public function galleryPaths(): Collection
     {
         $variantSourceImages = $this->variantSourceImageUrls();
-        $galleryPayloadImages = collect(data_get($this->source_payload, 'images', []))
-            ->slice(0, 4)
+        $galleryPayloadImages = collect(
+            data_get($this->source_payload, 'original_images', data_get($this->source_payload, 'images', []))
+        )
             ->all();
 
         $sourceGalleryImages = collect([
@@ -117,6 +118,10 @@ class Product extends Model
             ->reject(fn (string $path) => $variantSourceImages->contains($path))
             ->unique()
             ->values();
+
+        if ($this->shouldUseSourceMediaOnly()) {
+            return $this->sourceGalleryFallback($sourceGalleryImages);
+        }
 
         if ($this->shouldPreferStoredMedia()) {
             return $this->storedImagePathsForSection('gallery', $this->image_url, true);
@@ -130,12 +135,24 @@ class Product extends Model
      */
     public function descriptionImagePaths(): Collection
     {
-        $sourceDescriptionImages = collect(data_get($this->source_payload, 'description_images', []))
-            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
-            ->values();
+        $sourceDescriptionImages = $this->sourceDescriptionImageUrls(preferOriginal: true);
+
+        if ($this->shouldUseSourceMediaOnly()) {
+            return $sourceDescriptionImages;
+        }
 
         if ($this->shouldPreferStoredMedia()) {
-            return $this->storedImagePathsForSection('description');
+            $storedDescriptionImages = $this->storedImagePathsForSection('description');
+
+            if ($storedDescriptionImages->isNotEmpty()) {
+                return $storedDescriptionImages;
+            }
+
+            if ($this->allDescriptionImagesRejected()) {
+                return collect();
+            }
+
+            return $sourceDescriptionImages;
         }
 
         return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
@@ -143,7 +160,78 @@ class Product extends Model
 
     private function shouldPreferStoredMedia(): bool
     {
-        return in_array($this->import_status, ['completed', 'failed'], true);
+        return $this->import_status === 'completed' && blank($this->import_error);
+    }
+
+    private function shouldUseSourceMediaOnly(): bool
+    {
+        return in_array($this->import_status, ['pending', 'processing', 'failed'], true)
+            || ($this->import_status === 'completed' && filled($this->import_error));
+    }
+
+    /**
+     * @param  Collection<int, string>  $sourceGalleryImages
+     * @return Collection<int, string>
+     */
+    private function sourceGalleryFallback(Collection $sourceGalleryImages): Collection
+    {
+        if ($sourceGalleryImages->isNotEmpty()) {
+            return $sourceGalleryImages;
+        }
+
+        return collect([$this->image_url, $this->source_image_url])
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function sourceDescriptionImageUrls(bool $preferOriginal = false): Collection
+    {
+        $primaryImages = $preferOriginal
+            ? data_get($this->source_payload, 'original_description_images', [])
+            : data_get($this->source_payload, 'description_images', []);
+
+        $fallbackImages = $preferOriginal
+            ? data_get($this->source_payload, 'description_images', [])
+            : data_get($this->source_payload, 'original_description_images', []);
+
+        $payloadImages = collect($primaryImages)
+            ->merge(is_array($fallbackImages) ? $fallbackImages : [])
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
+            ->unique()
+            ->values();
+
+        if ($payloadImages->isNotEmpty()) {
+            return $payloadImages;
+        }
+
+        $descriptionHtml = data_get($this->source_payload, 'description_html');
+
+        if (! is_string($descriptionHtml) || trim($descriptionHtml) === '') {
+            return collect();
+        }
+
+        preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', html_entity_decode($descriptionHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $matches);
+
+        return collect($matches[1] ?? [])
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
+            ->map(fn (string $path) => Str::startsWith($path, '//') ? 'https:'.$path : $path)
+            ->filter(fn (string $path) => filter_var($path, FILTER_VALIDATE_URL))
+            ->unique()
+            ->values();
+    }
+
+    private function allDescriptionImagesRejected(): bool
+    {
+        $results = collect(data_get($this->import_api_debug, 'classify_description_results', []))
+            ->filter(fn ($row) => is_array($row) && is_string($row['status'] ?? null))
+            ->values();
+
+        return $results->isNotEmpty()
+            && $results->every(fn (array $row) => ($row['status'] ?? null) === 'rejected');
     }
 
     /**

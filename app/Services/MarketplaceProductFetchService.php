@@ -1,54 +1,48 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services;
 
 use App\Support\RemoteImage;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use RuntimeException;
 
-class ProductFromLinkController extends Controller
+class MarketplaceProductFetchService
 {
     private string $apiKey = 't7100';
+
     private string $apiSecret = '7100fb80';
 
-    public function show(Request $request): JsonResponse
+    /**
+     * @return array{platform:string,num_iid:string,product:array<string,mixed>,raw:array<string,mixed>}
+     */
+    public function fetch(string $link): array
     {
-        $validated = $request->validate([
-            'link' => ['required', 'string', 'max:2000'],
-        ]);
-
-        $link = trim($validated['link']);
+        $link = trim($link);
         $numIid = null;
         $platform = $this->detectPlatform($link, $numIid);
 
         if (blank($numIid)) {
-            return response()->json([
-                'message' => 'Unable to detect a valid product id from the provided link.',
-            ], 422);
+            throw new InvalidArgumentException('Unable to detect a valid product id from the provided link.');
         }
 
         $payload = $this->fetchItemPayload($platform, $numIid);
         $item = $payload['item'] ?? $payload['data']['item'] ?? $payload;
 
         if (! is_array($item) || $item === []) {
-            return response()->json([
-                'message' => 'The upstream API did not return a usable product payload.',
-                'platform' => $platform,
-                'num_iid' => $numIid,
-            ], 502);
+            throw new RuntimeException('The upstream API did not return a usable product payload.');
         }
 
-        return response()->json([
+        return [
             'platform' => $platform,
             'num_iid' => $numIid,
             'product' => $this->normalizeItem($item, $platform, $numIid, $link),
             'raw' => $item,
-        ]);
+        ];
     }
 
-    private function detectPlatform(string $link, ?string &$numIid): string
+    public function detectPlatform(string $link, ?string &$numIid): string
     {
         $normalizedLink = Str::lower($link);
 
@@ -79,6 +73,9 @@ class ProductFromLinkController extends Controller
         return 'taobao';
     }
 
+    /**
+     * @return array<string,mixed>
+     */
     private function fetchItemPayload(string $platform, string $numIid): array
     {
         $endpoint = match ($platform) {
@@ -88,9 +85,9 @@ class ProductFromLinkController extends Controller
         };
 
         $response = Http::acceptJson()
-            ->timeout(60)
+            ->timeout(90)
             ->connectTimeout(30)
-            ->retry(2, 500)
+            ->retry(2, 750)
             ->get("https://api-gw.onebound.cn/{$endpoint}", [
                 'key' => $this->apiKey,
                 'secret' => $this->apiSecret,
@@ -100,24 +97,23 @@ class ProductFromLinkController extends Controller
             ]);
 
         if ($response->failed()) {
-            abort(response()->json([
-                'message' => 'Failed to fetch product details from the upstream API.',
-                'status' => $response->status(),
-                'body' => $response->json() ?? $response->body(),
-            ], 502));
+            $body = $response->json() ?? $response->body();
+
+            throw new RuntimeException("Failed to fetch product details from upstream API. Status {$response->status()}: ".json_encode($body));
         }
 
         $json = $response->json();
 
         if (! is_array($json)) {
-            abort(response()->json([
-                'message' => 'The upstream API returned an invalid JSON payload.',
-            ], 502));
+            throw new RuntimeException('The upstream API returned an invalid JSON payload.');
         }
 
         return $json;
     }
 
+    /**
+     * @return array<string,mixed>
+     */
     private function normalizeItem(array $item, string $platform, string $numIid, string $fallbackLink): array
     {
         $title = $item['title']
@@ -140,13 +136,13 @@ class ProductFromLinkController extends Controller
         $galleryImages = $this->extractGalleryImageUrls($item, $mainImageUrl);
         $descriptionImages = $this->extractDescriptionImageUrls($item);
         $variants = $this->extractVariants($item);
-        $detailUrl = $this->normalizeUrl($detailUrl);
         $descriptionHtml = $this->normalizeDescriptionHtml($item['desc'] ?? $item['description_html'] ?? null);
         $description = $this->buildDescription($item);
+
         return [
             'title' => $title,
             'original_price' => $this->normalizePrice($price),
-            'detail_url' => $detailUrl,
+            'detail_url' => $this->normalizeUrl($detailUrl),
             'description' => $description,
             'description_html' => $descriptionHtml,
             'main_image_url' => $mainImageUrl,
@@ -163,11 +159,13 @@ class ProductFromLinkController extends Controller
             'variants' => $variants,
             'platform' => $platform,
             'num_iid' => $numIid,
+            'moq' => max((int) ($item['min_num'] ?? 1), 1),
+            'stock_quantity' => max((int) ($item['num'] ?? 0), 0),
         ];
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int,string>
      */
     private function extractGalleryImageUrls(array $item, ?string $mainImageUrl): array
     {
@@ -180,7 +178,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int,string>
      */
     private function extractDescriptionImageUrls(array $item): array
     {
@@ -209,9 +207,9 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @param  array<int, mixed>  $candidates
-     * @param  array<int, string|null>  $excludedUrls
-     * @return array<int, string>
+     * @param array<int,mixed> $candidates
+     * @param array<int,string|null> $excludedUrls
+     * @return array<int,string>
      */
     private function normalizeExtractedUrls(array $candidates, array $excludedUrls = []): array
     {
@@ -230,7 +228,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int,string>
      */
     private function extractArrayImageUrls(array $images): array
     {
@@ -252,7 +250,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int,string>
      */
     private function extractDescriptionHtmlImageUrls(?string $descriptionHtml): array
     {
@@ -271,17 +269,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<int, array{
-     *   sku_id:string,
-     *   properties_key:string|null,
-     *   properties_name:string|null,
-     *   label:string,
-     *   image_url:string|null,
-     *   price:float|null,
-     *   original_price:float|null,
-     *   stock_quantity:int,
-     *   option_values:array<int, array{key:string,group_name:string,value:string}>
-     * }>
+     * @return array<int,array<string,mixed>>
      */
     private function extractVariants(array $item): array
     {
@@ -326,7 +314,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string,string>
      */
     private function extractPropertyImageMap(array $item): array
     {
@@ -370,7 +358,7 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @return array<int, array{key:string,group_name:string,value:string}>
+     * @return array<int,array{key:string,group_name:string,value:string}>
      */
     private function parseVariantOptionValues(?string $propertiesName): array
     {
@@ -398,8 +386,8 @@ class ProductFromLinkController extends Controller
     }
 
     /**
-     * @param  array<int, array{key:string,group_name:string,value:string}>  $optionValues
-     * @param  array<string, string>  $propertyImageMap
+     * @param array<int,array{key:string,group_name:string,value:string}> $optionValues
+     * @param array<string,string> $propertyImageMap
      */
     private function resolveVariantImageUrl(array $optionValues, array $propertyImageMap): ?string
     {
@@ -470,11 +458,7 @@ class ProductFromLinkController extends Controller
             return true;
         }
 
-        if (preg_match('/^\{.*\}$/u', $line) === 1) {
-            return true;
-        }
-
-        return false;
+        return preg_match('/^\{.*\}$/u', $line) === 1;
     }
 
     private function normalizeUrl(null|string $value): ?string

@@ -5,10 +5,11 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { fetchProduct, ProductDetail } from '../api';
 import { useProcurementList } from '../contexts/ProcurementListContext';
 import { useAuth } from '../contexts/AuthContext';
+import { formatApiCategoryPath } from '../utils/category';
 
 export function ProductDetailPage() {
   const { id } = useParams();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { addItem, addItems, isInList } = useProcurementList();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -61,7 +62,7 @@ export function ProductDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!id || product?.import_status !== 'processing') {
+    if (!id || !['pending', 'processing'].includes(product?.import_status ?? '')) {
       return;
     }
 
@@ -170,6 +171,7 @@ export function ProductDetailPage() {
     ?? product.image_source_url
     ?? 'https://placehold.co/800x800?text=Product';
   const currentPrice = currentUnitPrice;
+  const categoryPath = formatApiCategoryPath(product.cat_from_api, language, product.category);
 
   const isOptionAvailable = (groupName: string, optionKey: string) => {
     if (product.variants.length === 0) {
@@ -346,7 +348,7 @@ export function ProductDetailPage() {
 
           <div>
             <div className="mb-6">
-              <div className="text-sm text-[#7C3AED] font-semibold mb-2">{product.category}</div>
+              <div className="text-sm text-[#7C3AED] font-semibold mb-2">{categoryPath}</div>
               <h1 className="text-3xl font-bold text-slate-900 mb-2">{product.name}</h1>
               <div className="text-sm text-slate-500">SKU: {product.sku}</div>
               {selectedVariant && (

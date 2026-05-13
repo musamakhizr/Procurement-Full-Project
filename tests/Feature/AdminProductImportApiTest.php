@@ -2,17 +2,120 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminProductImportApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_admin_can_queue_spreadsheet_import_with_marketplace_links(): void
+    {
+        Queue::fake();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $token = $admin->createToken('test')->plainTextToken;
+        $file = UploadedFile::fake()->createWithContent('marketplace-links.csv', implode("\n", [
+            'link',
+            'https://detail.1688.com/offer/1032188551822.html',
+            'https://item.jd.com/100012043978.html',
+            'https://example.com/not-supported',
+            'https://detail.1688.com/offer/1032188551822.html',
+        ]));
+
+        $this->withToken($token)
+            ->post('/api/admin/products/import-spreadsheet', [
+                'file' => $file,
+            ])
+            ->assertStatus(202)
+            ->assertJsonPath('queued_count', 2)
+            ->assertJsonPath('links.0', 'https://detail.1688.com/offer/1032188551822.html')
+            ->assertJsonPath('links.1', 'https://item.jd.com/100012043978.html');
+
+        Queue::assertPushed(ImportMarketplaceProductsFromSpreadsheet::class, function (ImportMarketplaceProductsFromSpreadsheet $job) use ($admin) {
+            return $job->adminUserId === $admin->id
+                && $job->links === [
+                    'https://detail.1688.com/offer/1032188551822.html',
+                    'https://item.jd.com/100012043978.html',
+                ];
+        });
+    }
+
+    public function test_imported_product_uses_source_images_until_media_fully_completes(): void
+    {
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'SRC-IMAGES-1',
+            'name' => 'Source image fallback product',
+            'description' => 'Source image fallback description',
+            'image_url' => 'products/1/redraw-gallery/01-processed.jpg',
+            'source_image_url' => 'https://cbu01.alicdn.com/img/ibank/main.jpg',
+            'source_payload' => [
+                'main_image_url' => 'https://cbu01.alicdn.com/img/ibank/main.jpg',
+                'image_url' => 'https://cbu01.alicdn.com/img/ibank/main.jpg',
+                'images' => [
+                    'https://cbu01.alicdn.com/img/ibank/gallery-1.jpg',
+                    'https://cbu01.alicdn.com/img/ibank/gallery-2.jpg',
+                ],
+                'description_images' => [],
+                'description_html' => '<p><img src="https://cbu01.alicdn.com/img/ibank/desc-from-html.jpg" /></p>',
+            ],
+            'import_status' => 'processing',
+            'import_error' => null,
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+
+        $product->productImages()->create([
+            'path' => 'products/1/redraw-gallery/01-processed.jpg',
+            'source_url' => 'https://cbu01.alicdn.com/img/ibank/main.jpg',
+            'section' => 'gallery',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $product->load('productImages', 'variants');
+
+        $this->assertSame([
+            'https://cbu01.alicdn.com/img/ibank/main.jpg',
+            'https://cbu01.alicdn.com/img/ibank/gallery-1.jpg',
+            'https://cbu01.alicdn.com/img/ibank/gallery-2.jpg',
+        ], $product->galleryPaths()->all());
+        $this->assertSame([
+            'https://cbu01.alicdn.com/img/ibank/desc-from-html.jpg',
+        ], $product->descriptionImagePaths()->all());
+
+        $product->forceFill([
+            'import_status' => 'completed',
+            'import_error' => 'One image failed.',
+        ])->save();
+
+        $this->assertSame('https://cbu01.alicdn.com/img/ibank/main.jpg', $product->refresh()->load('productImages', 'variants')->galleryPaths()->first());
+
+        $product->forceFill([
+            'import_error' => null,
+        ])->save();
+
+        $this->assertSame([
+            'products/1/redraw-gallery/01-processed.jpg',
+        ], $product->refresh()->load('productImages', 'variants')->galleryPaths()->all());
+    }
 
     public function test_admin_can_fetch_full_marketplace_product_details_with_gallery_images(): void
     {
@@ -252,6 +355,108 @@ class AdminProductImportApiTest extends TestCase
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
         }
+    }
+
+    public function test_import_processing_extracts_description_images_from_description_html(): void
+    {
+        Storage::fake('public');
+        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+
+        $descriptionClassifyCalls = 0;
+        $translateCalls = 0;
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('processed-main-image'),
+                    ],
+                ],
+            ], 200),
+            'https://py.fogot.cn/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
+                $descriptionClassifyCalls++;
+
+                return Http::response([
+                    'category' => 'ä»‹ç»å•†å“',
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+                $translateCalls++;
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode('processed-description-image'),
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys & Games',
+                        'L1_ZH' => 'çŽ©å…·',
+                        'L2_EN' => 'Educational / STEM Toys',
+                        'L2_ZH' => 'ç›Šæ™º/ç§‘æ•™çŽ©å…·',
+                        'L3_EN' => 'Science Kits',
+                        'L3_ZH' => 'Imported Toys',
+                        'number' => 0,
+                        'item_name' => 'Imported Html Product',
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Imported HTML',
+            'slug' => 'imported-html',
+            'sort_order' => 1,
+        ]);
+
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/admin/products', [
+            'category_id' => $category->id,
+            'sku' => 'HTML-DESC-1',
+            'name' => 'Imported Html Product',
+            'description' => 'Imported description',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 100,
+            'is_verified' => true,
+            'is_customizable' => false,
+            'is_active' => true,
+            'base_price' => 5.50,
+            'price_tiers' => [
+                ['min_quantity' => 1, 'max_quantity' => null, 'price' => 5.50],
+            ],
+            'import_source' => [
+                'platform' => '1688',
+                'num_iid' => 'html-desc-1',
+                'detail_url' => 'https://detail.1688.com/offer/html-desc-1.html',
+                'image_url' => 'https://cdn.example.com/main.jpg',
+                'main_image_url' => 'https://cdn.example.com/main.jpg',
+                'description' => 'Imported description',
+                'description_html' => '<div><img src="https://cbu01.alicdn.com/img/ibank/desc-html-1.jpg" /><img src="https://www.o0b.cn/i.php?t.png&rid=gw-test" /></div>',
+                'images' => [],
+                'description_images' => [],
+                'variants' => [],
+            ],
+        ])->assertCreated()
+            ->assertJsonCount(1, 'description_images');
+
+        $product = Product::query()->with('productImages')->firstOrFail();
+
+        $this->assertSame([
+            'https://cbu01.alicdn.com/img/ibank/desc-html-1.jpg',
+        ], data_get($product->source_payload, 'original_description_images'));
+        $this->assertCount(1, $product->productImages->where('section', 'description'));
+        $this->assertSame(1, $descriptionClassifyCalls);
+        $this->assertSame(1, $translateCalls);
     }
 
     public function test_description_images_are_skipped_when_classify_api_marks_them_as_non_product_content(): void
@@ -630,7 +835,7 @@ class AdminProductImportApiTest extends TestCase
         ], $product->descriptionImagePaths()->all());
     }
 
-    public function test_completed_product_detail_only_uses_stored_processed_gallery_images(): void
+    public function test_completed_product_detail_uses_stored_gallery_and_source_description_fallback(): void
     {
         $category = Category::query()->create([
             'name' => 'Processed Media',
@@ -676,7 +881,8 @@ class AdminProductImportApiTest extends TestCase
         $this->getJson("/api/products/{$product->id}")
             ->assertOk()
             ->assertJsonCount(1, 'images')
-            ->assertJsonCount(0, 'description_images');
+            ->assertJsonCount(1, 'description_images')
+            ->assertJsonPath('description_images.0', 'https://cdn.example.com/desc-1.jpg');
     }
 
     public function test_admin_can_retry_imported_product_processing(): void
@@ -790,4 +996,3 @@ class AdminProductImportApiTest extends TestCase
         $this->assertGreaterThanOrEqual(2, $product->productImages->count());
     }
 }
-

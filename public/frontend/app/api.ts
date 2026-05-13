@@ -559,6 +559,19 @@ export async function retryAdminProductImport(id: number) {
   return data;
 }
 
+export async function importAdminProductsSpreadsheet(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const { data } = await api.post<{
+    message: string;
+    queued_count: number;
+    links: string[];
+  }>('/admin/products/import-spreadsheet', formData);
+
+  return data;
+}
+
 export async function fetchAdminProductFromLink(link: string) {
   const { data } = await api.get<{
     platform: string;

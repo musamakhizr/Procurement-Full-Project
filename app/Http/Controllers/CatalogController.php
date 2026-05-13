@@ -80,7 +80,8 @@ class CatalogController extends Controller
                     $query->where(function ($searchQuery) use ($search) {
                         $searchQuery
                             ->where('name', 'like', "%{$search}%")
-                            ->orWhere('sku', 'like', "%{$search}%");
+                            ->orWhere('sku', 'like', "%{$search}%")
+                            ->orWhere('cat_from_api', 'like', "%{$search}%");
                     });
                 })
                 ->when($request->boolean('verified_only'), fn ($query) => $query->where('is_verified', true))
