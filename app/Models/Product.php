@@ -158,16 +158,15 @@ class Product extends Model
         return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
     }
 
-    private function shouldPreferStoredMedia(): bool
-    {
-        return $this->import_status === 'completed' && blank($this->import_error);
-    }
+   private function shouldPreferStoredMedia(): bool
+{
+    return $this->import_status === 'completed';
+}
 
-    private function shouldUseSourceMediaOnly(): bool
-    {
-        return in_array($this->import_status, ['pending', 'processing', 'failed'], true)
-            || ($this->import_status === 'completed' && filled($this->import_error));
-    }
+private function shouldUseSourceMediaOnly(): bool
+{
+    return in_array($this->import_status, ['pending', 'processing', 'failed'], true);
+}
 
     /**
      * @param  Collection<int, string>  $sourceGalleryImages
