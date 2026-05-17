@@ -529,6 +529,53 @@ export async function fetchAdminStats() {
   return data;
 }
 
+export interface MarketplaceShopImport {
+  id: number;
+  seed_url: string;
+  seed_platform: string | null;
+  seed_num_iid: string | null;
+  seller_id: string | null;
+  shop_id: string | null;
+  status: string;
+  total_product_links: number;
+  imported_product_links: number;
+  error: string | null;
+  metadata: {
+    current_stage?: string | null;
+    failed_stage?: string | null;
+    exception_class?: string | null;
+  } | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export async function fetchAdminShopImports(page = 1, perPage = 10) {
+  const { data } = await api.get<PaginatedResponse<MarketplaceShopImport> | {
+    data: MarketplaceShopImport[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  }>('/admin/product-shop-imports', {
+    params: { page, per_page: perPage },
+  });
+
+  if ('meta' in data) {
+    return data;
+  }
+
+  return {
+    data: data.data,
+    meta: {
+      current_page: data.current_page,
+      last_page: data.last_page,
+      per_page: data.per_page,
+      total: data.total,
+    },
+  };
+}
+
 export async function fetchAdminProducts(search = '', page = 1) {
   const { data } = await api.get<PaginatedResponse<ProductSummary>>('/admin/products', {
     params: { search, page },
@@ -568,6 +615,19 @@ export async function importAdminProductsSpreadsheet(file: File) {
     queued_count: number;
     links: string[];
   }>('/admin/products/import-spreadsheet', formData);
+
+  return data;
+}
+
+export async function importAdminShopSpreadsheet(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const { data } = await api.post<{
+    message: string;
+    queued_count: number;
+    shop_urls: string[];
+  }>('/admin/products/import-shop-spreadsheet', formData);
 
   return data;
 }

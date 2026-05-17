@@ -44,4 +44,10 @@ return [
         'category_dict_text' => env('FOGOT_CATEGORY_DICT_TEXT', ''),
     ],
 
+    'onebound' => [
+        'key' => env('ONEBOUND_API_KEY', 't7100'),
+        'secret' => env('ONEBOUND_API_SECRET', '7100fb80'),
+        'shop_import_max_pages' => (int) env('ONEBOUND_SHOP_IMPORT_MAX_PAGES', 0),
+    ],
+
 ];

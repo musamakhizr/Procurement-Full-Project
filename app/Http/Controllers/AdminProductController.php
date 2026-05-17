@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
 use App\Http\Requests\Admin\StoreProductRequest;
 use App\Http\Requests\Admin\UpdateProductRequest;
 use App\Http\Resources\ProductDetailResource;
 use App\Http\Resources\ProductListResource;
+use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
+use App\Jobs\ImportMarketplaceProductsFromShops;
 use App\Models\Category;
+use App\Models\MarketplaceShopImport;
 use App\Models\Product;
 use App\Services\ImportedProductSyncService;
 use App\Services\SpreadsheetProductLinkExtractor;
+use App\Services\SpreadsheetShopUrlExtractor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -124,6 +127,62 @@ class AdminProductController extends Controller
             'queued_count' => count($links),
             'links' => $links,
         ], 202);
+    }
+
+    public function importShopSpreadsheet(Request $request, SpreadsheetShopUrlExtractor $shopUrlExtractor): JsonResponse
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls,csv,txt'],
+        ]);
+
+        try {
+            $shopUrls = $shopUrlExtractor->extractFromUploadedFile($validated['file']);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        if ($shopUrls === []) {
+            return response()->json([
+                'message' => 'No supported Taobao or Tmall product URLs were found in this file. Upload at least one product URL from each shop so the importer can resolve seller_id and shop_id.',
+            ], 422);
+        }
+
+        $shopImports = DB::transaction(function () use ($request, $shopUrls) {
+            return collect($shopUrls)
+                ->map(fn (string $shopUrl) => MarketplaceShopImport::query()->create([
+                    'admin_user_id' => $request->user()?->getKey(),
+                    'seed_url' => $shopUrl,
+                    'status' => 'queued',
+                    'metadata' => [
+                        'source' => 'admin_shop_spreadsheet',
+                    ],
+                ]))
+                ->values();
+        });
+
+        ImportMarketplaceProductsFromShops::dispatch($shopImports->pluck('id')->all(), $request->user()?->getKey());
+
+        return response()->json([
+            'message' => 'Shop import has started. Seller and shop IDs will be resolved from each seed product, then shop products will be discovered, fetched, inserted, and processed one by one in the background.',
+            'queued_count' => count($shopUrls),
+            'shop_urls' => $shopUrls,
+            'import_ids' => $shopImports->pluck('id')->all(),
+        ], 202);
+    }
+
+    public function shopImports(Request $request): JsonResponse
+    {
+        $perPage = min(100, max(1, (int) $request->input('per_page', 25)));
+
+        $imports = MarketplaceShopImport::query()
+            ->with('adminUser:id,name,email')
+            ->latest()
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return response()->json($imports);
     }
 
     public function update(UpdateProductRequest $request, Product $product)

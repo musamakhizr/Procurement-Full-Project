@@ -1,7 +1,8 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { Link } from 'react-router';
+import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw, Store } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, importAdminShopSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
 import { formatApiCategoryL1 } from '../utils/category';
 
 const EMPTY_FORM = {
@@ -25,6 +26,7 @@ type SaveNotice = {
 export function AdminProductsPage() {
   const { t, language } = useLanguage();
   const spreadsheetInputRef = useRef<HTMLInputElement | null>(null);
+  const shopSpreadsheetInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -45,6 +47,7 @@ export function AdminProductsPage() {
   const [productLink, setProductLink] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [isSpreadsheetImporting, setIsSpreadsheetImporting] = useState(false);
+  const [isShopSpreadsheetImporting, setIsShopSpreadsheetImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [previewProduct, setPreviewProduct] = useState<ImportedMarketplaceProduct | null>(null);
   const [importedProduct, setImportedProduct] = useState<ImportedMarketplaceProduct | null>(null);
@@ -261,9 +264,6 @@ export function AdminProductsPage() {
         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold capitalize ${tone}`}>
           {product.import_status}: {progress}
         </span>
-        {product.import_error && (
-          <p className="mt-1 line-clamp-2 text-[11px] text-amber-700" title={product.import_error}>{product.import_error}</p>
-        )}
       </div>
     );
   };
@@ -509,6 +509,37 @@ export function AdminProductsPage() {
     }
   };
 
+  const handleShopSpreadsheetImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setIsShopSpreadsheetImporting(true);
+    setSaveNotice({
+      tone: 'info',
+      message: `Uploading ${file.name}. Shop seed product URLs will be queued after validation.`,
+    });
+
+    try {
+      const response = await importAdminShopSpreadsheet(file);
+      setSaveNotice({
+        tone: 'success',
+        message: `${response.queued_count} shop seed product URL${response.queued_count === 1 ? '' : 's'} queued. The importer will resolve seller_id and shop_id from each seed item, then fetch and process each shop product one by one in the background.`,
+      });
+      await loadAdminData(currentPage, searchQuery);
+    } catch (error: any) {
+      setSaveNotice({
+        tone: 'error',
+        message: error?.response?.data?.message ?? 'Unable to import shops from this file.',
+      });
+    } finally {
+      setIsShopSpreadsheetImporting(false);
+      event.target.value = '';
+    }
+  };
+
   const pageNumbers = useMemo(() => {
     return Array.from({ length: pagination.last_page }, (_, index) => index + 1);
   }, [pagination.last_page]);
@@ -578,6 +609,13 @@ export function AdminProductsPage() {
                 className="hidden"
                 onChange={(event) => void handleSpreadsheetImport(event)}
               />
+              <input
+                ref={shopSpreadsheetInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,.txt"
+                className="hidden"
+                onChange={(event) => void handleShopSpreadsheetImport(event)}
+              />
               <button
                 onClick={() => spreadsheetInputRef.current?.click()}
                 disabled={isSpreadsheetImporting}
@@ -586,6 +624,21 @@ export function AdminProductsPage() {
                 <Upload className="w-4 h-4" />
                 <span className="hidden md:inline">{isSpreadsheetImporting ? 'Uploading...' : t('admin.import')}</span>
               </button>
+              <button
+                onClick={() => shopSpreadsheetInputRef.current?.click()}
+                disabled={isShopSpreadsheetImporting}
+                className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden md:inline">{isShopSpreadsheetImporting ? 'Uploading...' : 'Import Shop'}</span>
+              </button>
+              <Link
+                to="/admin/shop-imports"
+                className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"
+              >
+                <Store className="w-4 h-4" />
+                <span className="hidden md:inline">Shop Imports</span>
+              </Link>
               <button className="flex items-center gap-2 px-5 py-3 border-2 border-slate-200 rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] transition-colors font-semibold text-slate-700"><Download className="w-4 h-4" /><span className="hidden md:inline">{t('admin.export')}</span></button>
               <button onClick={() => { setEditingProductId(null); setForm(EMPTY_FORM); setProductLink(''); setImportError(''); setPreviewProduct(null); setImportedProduct(null); setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 bg-[#4F6BFF] text-white rounded-xl hover:bg-[#3D56E0] transition-colors font-semibold"><Plus className="w-4 h-4" /><span>{t('admin.addProduct')}</span></button>
             </div>

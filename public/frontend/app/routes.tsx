@@ -10,6 +10,7 @@ import { SourcingPage } from './pages/SourcingPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { MyQuoteRequestsPage } from './pages/MyQuoteRequestsPage';
 import { AdminProductsPage } from './pages/AdminProductsPage';
+import { AdminShopImportsPage } from './pages/AdminShopImportsPage';
 import { AdminRequestsPage } from './pages/AdminRequestsPage';
 import { AdminQuoteRequestsPage } from './pages/AdminQuoteRequestsPage';
 import { ProcurementListPage } from './pages/ProcurementListPage';
@@ -117,6 +118,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute adminOnly>
             <AdminProductsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'admin/shop-imports',
+        element: (
+          <ProtectedRoute adminOnly>
+            <AdminShopImportsPage />
           </ProtectedRoute>
         ),
       },

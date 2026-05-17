@@ -75,6 +75,11 @@ export function Header() {
                       Admin Products
                     </Link>
                   )}
+                  {user?.is_admin && (
+                    <Link to="/admin/shop-imports" className="text-sm text-slate-500 hover:text-[#7C3AED] transition-colors font-medium">
+                      Shop Imports
+                    </Link>
+                  )}
                 </>
               ) : (
                 <>
@@ -176,6 +181,11 @@ export function Header() {
                         Admin Products
                       </Link>
                     )}
+                    {user?.is_admin && (
+                      <Link to="/admin/shop-imports" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                        Shop Imports
+                      </Link>
+                    )}
                     <div className="border-t border-slate-200 my-2" />
                     <button
                       onClick={handleSignOut}
@@ -233,6 +243,7 @@ export function Header() {
                       </Link>
                       <Link to="/admin/quote-requests" onClick={closeMenus} className="rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">Admin Quotes</Link>
                       <Link to="/admin/products" onClick={closeMenus} className="rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">Admin Products</Link>
+                      <Link to="/admin/shop-imports" onClick={closeMenus} className="rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50">Shop Imports</Link>
                     </>
                   )}
                   <div className="my-1 border-t border-slate-100" />

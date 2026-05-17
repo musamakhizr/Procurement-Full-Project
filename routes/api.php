@@ -46,9 +46,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/product-stats', [AdminProductController::class, 'stats']);
+        Route::get('/product-shop-imports', [AdminProductController::class, 'shopImports']);
         Route::get('/products', [AdminProductController::class, 'index']);
         Route::get('/products/from-link', [ProductFromLinkController::class, 'show']);
         Route::post('/products/import-spreadsheet', [AdminProductController::class, 'importSpreadsheet']);
+        Route::post('/products/import-shop-spreadsheet', [AdminProductController::class, 'importShopSpreadsheet']);
         Route::post('/products', [AdminProductController::class, 'store']);
         Route::post('/products/{product}/retry-import', [AdminProductController::class, 'retryImport']);
         Route::patch('/products/{product}', [AdminProductController::class, 'update']);

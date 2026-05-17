@@ -2,15 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ImportMarketplaceProductsFromShops;
 use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
 use App\Models\Category;
+use App\Models\MarketplaceShopImport;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\BulkMarketplaceProductImportService;
+use App\Services\BulkMarketplaceShopImportService;
+use App\Services\MarketplaceProductFetchService;
+use App\Services\MarketplaceShopProductFetchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class AdminProductImportApiTest extends TestCase
@@ -47,6 +54,310 @@ class AdminProductImportApiTest extends TestCase
                     'https://item.jd.com/100012043978.html',
                 ];
         });
+    }
+
+    public function test_admin_can_queue_shop_spreadsheet_import_with_taobao_product_seed_urls(): void
+    {
+        Queue::fake();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $token = $admin->createToken('test')->plainTextToken;
+        $file = UploadedFile::fake()->createWithContent('shop-links.csv', implode("\n", [
+            'product_url',
+            'https://item.taobao.com/item.htm?ali_refid=abc&id=43556946751&skuId=6070214865171',
+            'https://detail.1688.com/offer/935069584004.html?offerId=935069584004&hotSaleSkuId=5989927834046&spm=a260k.home2025.recommendpart.7',
+            'https://detail.tmall.com/item.htm?id=668816694920&item_type=ad&skuId=6246256382559',
+            'https://example.com/not-supported',
+            'https://item.taobao.com/item.htm?id=43556946751&spm=duplicate',
+        ]));
+
+        $this->withToken($token)
+            ->post('/api/admin/products/import-shop-spreadsheet', [
+                'file' => $file,
+            ])
+            ->assertStatus(202)
+            ->assertJsonPath('queued_count', 3)
+            ->assertJsonPath('shop_urls.0', 'https://item.taobao.com/item.htm?ali_refid=abc&id=43556946751&skuId=6070214865171')
+            ->assertJsonPath('shop_urls.1', 'https://detail.1688.com/offer/935069584004.html?offerId=935069584004&hotSaleSkuId=5989927834046&spm=a260k.home2025.recommendpart.7')
+            ->assertJsonPath('shop_urls.2', 'https://detail.tmall.com/item.htm?id=668816694920&item_type=ad&skuId=6246256382559')
+            ->assertJsonCount(3, 'import_ids');
+
+        $this->assertDatabaseHas('marketplace_shop_imports', [
+            'admin_user_id' => $admin->id,
+            'seed_url' => 'https://item.taobao.com/item.htm?ali_refid=abc&id=43556946751&skuId=6070214865171',
+            'status' => 'queued',
+        ]);
+
+        Queue::assertPushed(ImportMarketplaceProductsFromShops::class, function (ImportMarketplaceProductsFromShops $job) use ($admin) {
+            return $job->adminUserId === $admin->id && count($job->shopImportIds) === 3;
+        });
+    }
+
+    public function test_shop_product_fetch_service_resolves_shop_from_seed_product_and_product_detail_links(): void
+    {
+        Http::fake([
+            'https://api-gw.onebound.cn/taobao/item_get_pro/*' => Http::response([
+                'item' => [
+                    'num_iid' => '43556946751',
+                    'title' => 'Seed product',
+                    'price' => '32.50',
+                    'detail_url' => 'https://item.taobao.com/item.htm?id=43556946751',
+                    'pic_url' => '//img.alicdn.com/imgextra/i2/16134769/seed.jpg',
+                    'seller_id' => '16134769',
+                    'shop_id' => '34970285',
+                ],
+                'error_code' => '0000',
+            ]),
+            'https://api-gw.onebound.cn/taobao/item_search_shop_pro/*' => Http::sequence()
+                ->push([
+                    'items' => [
+                        'shop_id' => '34970285',
+                        'page' => '1',
+                        'page_count' => 2,
+                        'item' => [
+                            [
+                                'num_iid' => 953121592758,
+                                'detail_url' => 'https://item.taobao.com/item.htm?id=953121592758',
+                            ],
+                            [
+                                'num_iid' => 733669788190,
+                                'detail_url' => 'https://item.taobao.com/item.htm?id=733669788190',
+                            ],
+                        ],
+                    ],
+                    'error_code' => '0000',
+                ])
+                ->push([
+                    'items' => [
+                        'shop_id' => '34970285',
+                        'page' => '2',
+                        'page_count' => 2,
+                        'item' => [
+                            [
+                                'num_iid' => 932300720491,
+                                'detail_url' => '',
+                            ],
+                        ],
+                    ],
+                    'error_code' => '0000',
+                ]),
+        ]);
+
+        $service = app(MarketplaceShopProductFetchService::class);
+        $shopIdentity = $service->resolveShopFromSeedProductUrl('https://item.taobao.com/item.htm?ali_refid=abc&id=43556946751&skuId=6070214865171');
+        $links = $service->fetchProductLinksForShop($shopIdentity['shop_id'], $shopIdentity['seller_id']);
+
+        $this->assertSame('34970285', $shopIdentity['shop_id']);
+        $this->assertSame('16134769', $shopIdentity['seller_id']);
+        $this->assertSame('43556946751', $shopIdentity['seed_num_iid']);
+        $this->assertSame([
+            'https://item.taobao.com/item.htm?id=953121592758',
+            'https://item.taobao.com/item.htm?id=733669788190',
+            'https://item.taobao.com/item.htm?id=932300720491',
+        ], $links);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'item_get_pro')
+            && $request['num_iid'] === '43556946751');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'seller_info'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'item_search_shop_pro')
+            && $request['shop_id'] === '34970285'
+            && $request['seller_id'] === '16134769'
+            && (int) $request['page'] === 1);
+    }
+
+    public function test_marketplace_product_fetch_service_detects_supported_product_url_ids(): void
+    {
+        $service = app(MarketplaceProductFetchService::class);
+
+        $numIid = null;
+        $platform = $service->detectPlatform('https://detail.1688.com/offer/935069584004.html?offerId=935069584004&hotSaleSkuId=5989927834046', $numIid);
+        $this->assertSame('1688', $platform);
+        $this->assertSame('935069584004', $numIid);
+
+        $numIid = null;
+        $platform = $service->detectPlatform('https://detail.tmall.com/item.htm?id=668816694920&item_type=ad&skuId=6246256382559', $numIid);
+        $this->assertSame('taobao', $platform);
+        $this->assertSame('668816694920', $numIid);
+
+        $numIid = null;
+        $platform = $service->detectPlatform('https://item.jd.com/100012043978.html', $numIid);
+        $this->assertSame('jd', $platform);
+        $this->assertSame('100012043978', $numIid);
+    }
+
+    public function test_shop_bulk_import_discovers_all_links_before_product_processing_starts(): void
+    {
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.tmall.com/item.htm?id=668816694920')
+            ->andReturn([
+                'shop_id' => '34970285',
+                'seller_id' => '16134769',
+                'seed_platform' => 'taobao',
+                'seed_num_iid' => '668816694920',
+                'seed_product_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+                'raw' => [],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('34970285', '16134769')
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=668816694920',
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ]);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.1688.com/offer/935069584004.html')
+            ->andReturn([
+                'shop_id' => '247748197',
+                'seller_id' => '3244367701',
+                'seed_platform' => '1688',
+                'seed_num_iid' => '935069584004',
+                'seed_product_url' => 'https://detail.1688.com/offer/935069584004.html',
+                'raw' => [],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('247748197', '3244367701')
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=733669788190',
+            ]);
+
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://item.taobao.com/item.htm?id=668816694920',
+                'https://item.taobao.com/item.htm?id=953121592758',
+                'https://detail.1688.com/offer/935069584004.html',
+                'https://item.taobao.com/item.htm?id=733669788190',
+            ]);
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importShopUrlsSequentially([
+            'https://detail.tmall.com/item.htm?id=668816694920',
+            'https://detail.1688.com/offer/935069584004.html',
+        ]);
+    }
+
+    public function test_tracked_shop_import_records_seller_shop_ids_links_and_completion_status(): void
+    {
+        $shopImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+            'status' => 'queued',
+        ]);
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.tmall.com/item.htm?id=668816694920')
+            ->andReturn([
+                'shop_id' => '34970285',
+                'seller_id' => '16134769',
+                'seed_platform' => 'taobao',
+                'seed_num_iid' => '668816694920',
+                'seed_product_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+                'raw' => ['title' => 'Seed item'],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('34970285', '16134769')
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ]);
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://item.taobao.com/item.htm?id=668816694920',
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ]);
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importTrackedShopUrlsSequentially([$shopImport->id]);
+
+        $shopImport->refresh();
+        $this->assertSame('completed', $shopImport->status);
+        $this->assertSame('taobao', $shopImport->seed_platform);
+        $this->assertSame('668816694920', $shopImport->seed_num_iid);
+        $this->assertSame('16134769', $shopImport->seller_id);
+        $this->assertSame('34970285', $shopImport->shop_id);
+        $this->assertSame(2, $shopImport->total_product_links);
+        $this->assertSame(2, $shopImport->imported_product_links);
+        $this->assertSame(['title' => 'Seed item'], $shopImport->raw_seed_payload);
+        $this->assertNotNull($shopImport->started_at);
+        $this->assertNotNull($shopImport->completed_at);
+    }
+
+    public function test_tracked_shop_import_continues_when_one_seed_fails(): void
+    {
+        $failedImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.tmall.com/item.htm?id=111',
+            'status' => 'queued',
+        ]);
+        $successfulImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.tmall.com/item.htm?id=222',
+            'status' => 'queued',
+        ]);
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.tmall.com/item.htm?id=111')
+            ->andThrow(new \RuntimeException('Seed item did not include seller_id.'));
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.tmall.com/item.htm?id=222')
+            ->andReturn([
+                'shop_id' => 'shop-222',
+                'seller_id' => 'seller-222',
+                'seed_platform' => 'taobao',
+                'seed_num_iid' => '222',
+                'seed_product_url' => 'https://detail.tmall.com/item.htm?id=222',
+                'raw' => ['title' => 'Working seed'],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('shop-222', 'seller-222')
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=333',
+            ]);
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://item.taobao.com/item.htm?id=222',
+                'https://item.taobao.com/item.htm?id=333',
+            ]);
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importTrackedShopUrlsSequentially([$failedImport->id, $successfulImport->id]);
+
+        $failedImport->refresh();
+        $successfulImport->refresh();
+
+        $this->assertSame('failed', $failedImport->status);
+        $this->assertSame('Seed item did not include seller_id.', $failedImport->error);
+        $this->assertSame('resolving_seed', $failedImport->metadata['failed_stage']);
+        $this->assertSame('completed', $successfulImport->status);
+        $this->assertSame('seller-222', $successfulImport->seller_id);
+        $this->assertSame('shop-222', $successfulImport->shop_id);
+        $this->assertSame(2, $successfulImport->total_product_links);
     }
 
     public function test_imported_product_uses_source_images_until_media_fully_completes(): void

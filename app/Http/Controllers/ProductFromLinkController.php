@@ -51,24 +51,25 @@ class ProductFromLinkController extends Controller
     private function detectPlatform(string $link, ?string &$numIid): string
     {
         $normalizedLink = Str::lower($link);
+        parse_str((string) parse_url($link, PHP_URL_QUERY), $query);
 
         if (str_contains($normalizedLink, '1688.com')) {
             preg_match('/offer\/(\d+)\.html/i', $link, $matches);
-            $numIid = $matches[1] ?? $numIid;
+            $numIid = $matches[1] ?? $query['offerId'] ?? $query['offer_id'] ?? $query['id'] ?? $numIid;
 
             return '1688';
         }
 
         if (str_contains($normalizedLink, 'jd.com')) {
             preg_match('/item\.jd\.com\/(\d+)\.html/i', $link, $matches);
-            $numIid = $matches[1] ?? $numIid;
+            $numIid = $matches[1] ?? $query['id'] ?? $numIid;
 
             return 'jd';
         }
 
         if (str_contains($normalizedLink, 'taobao.com') || str_contains($normalizedLink, 'tmall.com')) {
             preg_match('/[?&]id=(\d+)/i', $link, $matches);
-            $numIid = $matches[1] ?? $numIid;
+            $numIid = $matches[1] ?? $query['id'] ?? $numIid;
 
             return 'taobao';
         }
