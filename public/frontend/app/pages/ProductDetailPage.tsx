@@ -7,6 +7,12 @@ import { useProcurementList } from '../contexts/ProcurementListContext';
 import { useAuth } from '../contexts/AuthContext';
 import { formatApiCategoryPath } from '../utils/category';
 
+const INITIAL_VISIBLE_VARIANTS = 24;
+const VISIBLE_VARIANT_INCREMENT = 24;
+const INITIAL_VISIBLE_DESCRIPTION_IMAGES = 3;
+const VISIBLE_DESCRIPTION_IMAGE_INCREMENT = 6;
+const MAX_VISIBLE_GALLERY_THUMBNAILS = 8;
+
 export function ProductDetailPage() {
   const { id } = useParams();
   const { t, language } = useLanguage();
@@ -21,6 +27,8 @@ export function ProductDetailPage() {
   const [variantQuantities, setVariantQuantities] = useState<Record<number, number>>({});
   const [isAddingSelectedSkus, setIsAddingSelectedSkus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [visibleVariantCount, setVisibleVariantCount] = useState(INITIAL_VISIBLE_VARIANTS);
+  const [visibleDescriptionImageCount, setVisibleDescriptionImageCount] = useState(INITIAL_VISIBLE_DESCRIPTION_IMAGES);
 
   useEffect(() => {
     let isCancelled = false;
@@ -126,6 +134,8 @@ export function ProductDetailPage() {
 
     setSelectedImage(0);
     setVariantQuantities({});
+    setVisibleVariantCount(INITIAL_VISIBLE_VARIANTS);
+    setVisibleDescriptionImageCount(INITIAL_VISIBLE_DESCRIPTION_IMAGES);
   }, [product?.id]);
 
   useEffect(() => {
@@ -162,6 +172,14 @@ export function ProductDetailPage() {
   const galleryImages = selectedVariant?.image
     ? [selectedVariant.image, ...product.images.filter((image) => image !== selectedVariant.image)]
     : product.images;
+  const visibleGalleryImages = galleryImages.slice(0, MAX_VISIBLE_GALLERY_THUMBNAILS);
+  const baseVisibleVariants = product.variants.slice(0, visibleVariantCount);
+  const visibleVariants = selectedVariant && !baseVisibleVariants.some((variant) => variant.id === selectedVariant.id)
+    ? [selectedVariant, ...baseVisibleVariants]
+    : baseVisibleVariants;
+  const hiddenVariantCount = Math.max(product.variants.length - visibleVariantCount, 0);
+  const visibleDescriptionImages = product.description_images.slice(0, visibleDescriptionImageCount);
+  const hiddenDescriptionImageCount = Math.max(product.description_images.length - visibleDescriptionImageCount, 0);
   const currentUnitPrice = selectedVariant?.original_price
     ?? selectedVariant?.price
     ?? product.base_price
@@ -330,17 +348,17 @@ export function ProductDetailPage() {
           <div>
             <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden mb-4">
               <div className="aspect-square bg-slate-100">
-                <img src={heroImage} alt={product.name} className="w-full h-full object-cover" />
+                <img src={heroImage} alt={product.name} loading="eager" decoding="async" fetchPriority="high" className="w-full h-full object-cover" />
               </div>
             </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
-              {galleryImages.map((image, index) => (
+              {visibleGalleryImages.map((image, index) => (
                 <button
                   key={image}
                   onClick={() => setSelectedImage(index)}
                   className={`aspect-square rounded-xl border-2 overflow-hidden transition-all ${selectedImage === index ? 'border-[#4F6BFF] ring-2 ring-[#4F6BFF]/20' : 'border-slate-200 hover:border-slate-300'}`}
                 >
-                  <img src={image} alt="" className="w-full h-full object-cover" />
+                  <img src={image} alt="" loading={index === 0 ? 'eager' : 'lazy'} decoding="async" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
@@ -400,7 +418,7 @@ export function ProductDetailPage() {
 
                   <div className="max-h-[560px] overflow-y-auto">
                     <div className="divide-y divide-slate-100">
-                      {product.variants.map((variant) => {
+                      {visibleVariants.map((variant) => {
                         const rowQuantity = variantQuantities[variant.id] ?? 0;
                         const rowSubtotal = rowQuantity * variant.price;
                         const rowImage = variant.image ?? product.image_source_url ?? 'https://placehold.co/120x120?text=SKU';
@@ -432,7 +450,7 @@ export function ProductDetailPage() {
                                   : 'border-l-transparent hover:bg-slate-50'
                             }`}
                           >
-                            <img src={rowImage} alt={rowLabel} className="h-14 w-14 rounded-xl border border-slate-200 bg-slate-50 object-cover" />
+                            <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-14 w-14 rounded-xl border border-slate-200 bg-slate-50 object-cover" />
 
                             <div className="min-w-0">
                               <div className="line-clamp-2 text-sm font-bold text-slate-900">{rowLabel}</div>
@@ -502,6 +520,17 @@ export function ProductDetailPage() {
                           </div>
                         );
                       })}
+                      {hiddenVariantCount > 0 && (
+                        <div className="px-4 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleVariantCount((current) => current + VISIBLE_VARIANT_INCREMENT)}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#4F6BFF] transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]"
+                          >
+                            Show more SKUs ({hiddenVariantCount})
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -527,7 +556,7 @@ export function ProductDetailPage() {
 
                         return (
                           <div key={row.variant.id} className="flex gap-3 rounded-2xl border border-[#4F6BFF]/20 bg-[#EEF2FF]/60 p-3">
-                            <img src={rowImage} alt={rowLabel} className="h-12 w-12 rounded-xl border border-white object-cover shadow-sm" />
+                            <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-12 w-12 rounded-xl border border-white object-cover shadow-sm" />
                             <div className="min-w-0 flex-1">
                               <div className="line-clamp-1 text-sm font-bold text-slate-900">{rowLabel}</div>
                               <div className="mt-1 text-xs text-slate-600">{currencySymbol}{row.variant.price.toFixed(2)} x {row.quantity}</div>
@@ -604,7 +633,7 @@ export function ProductDetailPage() {
                             >
                               {option.image && (
                                 <div className="mb-2 h-14 w-14 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                                  <img src={option.image} alt={option.value} className="h-full w-full object-cover" />
+                                  <img src={option.image} alt={option.value} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                                 </div>
                               )}
                               <div className="text-sm font-semibold text-slate-900">{option.value}</div>
@@ -692,11 +721,20 @@ export function ProductDetailPage() {
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-4">Product Detail Images</h3>
                   <div className="space-y-4">
-                    {product.description_images.map((image, index) => (
+                    {visibleDescriptionImages.map((image, index) => (
                       <div key={`${image}-${index}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                        <img src={image} alt={`${product.name} detail ${index + 1}`} className="w-full object-cover" />
+                        <img src={image} alt={`${product.name} detail ${index + 1}`} loading="lazy" decoding="async" className="w-full object-cover" />
                       </div>
                     ))}
+                    {hiddenDescriptionImageCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleDescriptionImageCount((current) => current + VISIBLE_DESCRIPTION_IMAGE_INCREMENT)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#4F6BFF] transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]"
+                      >
+                        Show more detail images ({hiddenDescriptionImageCount})
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

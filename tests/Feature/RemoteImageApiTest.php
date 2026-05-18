@@ -32,7 +32,7 @@ class RemoteImageApiTest extends TestCase
         $this->get($signedUrl)
             ->assertOk()
             ->assertHeader('Content-Type', 'image/jpeg')
-            ->assertHeader('Cache-Control', 'max-age=86400, public, s-maxage=604800')
+            ->assertHeader('Cache-Control', 'immutable, max-age=604800, public, s-maxage=604800')
             ->assertSeeText('fake-image-bytes', false);
     }
 
