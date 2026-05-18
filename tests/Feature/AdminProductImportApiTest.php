@@ -2,16 +2,21 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\TransientFogotApiException;
 use App\Jobs\ImportMarketplaceProductsFromShops;
 use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
+use App\Jobs\ProcessImportedProductDetailImage;
 use App\Models\Category;
 use App\Models\MarketplaceShopImport;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\BulkMarketplaceProductImportService;
 use App\Services\BulkMarketplaceShopImportService;
+use App\Services\FogotProductMediaService;
+use App\Services\ImportedProductSyncService;
 use App\Services\MarketplaceProductFetchService;
 use App\Services\MarketplaceShopProductFetchService;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -358,6 +363,150 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame('seller-222', $successfulImport->seller_id);
         $this->assertSame('shop-222', $successfulImport->shop_id);
         $this->assertSame(2, $successfulImport->total_product_links);
+    }
+
+    public function test_fogot_image_processing_retries_transient_statuses_before_failing(): void
+    {
+        Config::set('services.fogot.retry_times', 2);
+        Config::set('services.fogot.retry_sleep_ms', 0);
+        Config::set('services.fogot.retry_statuses', [420, 500]);
+        Config::set('services.fogot.timeout', 900);
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/detail/image/translate' => Http::sequence()
+                ->push(['message' => 'still processing'], 420)
+                ->push(['message' => 'temporary server error'], 500)
+                ->push([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode('translated-image'),
+                        ],
+                    ],
+                ], 200),
+        ]);
+
+        $images = app(FogotProductMediaService::class)
+            ->translateImage('https://cbu01.alicdn.com/img/ibank/test.jpg');
+
+        $this->assertCount(1, $images);
+        $this->assertSame('image/jpeg', $images[0]['mime_type']);
+        $this->assertSame(base64_encode('translated-image'), $images[0]['data']);
+    }
+
+    public function test_queued_image_job_retries_transient_fogot_failures_before_writing_import_error(): void
+    {
+        Config::set('services.fogot.retry_times', 0);
+        Config::set('services.fogot.retry_sleep_ms', 0);
+        Config::set('services.fogot.retry_statuses', [500]);
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response(['message' => 'temporary server error'], 500),
+        ]);
+
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRANSIENT-RETRY-1',
+            'name' => 'Transient retry product',
+            'description' => 'Transient retry description',
+            'source_payload' => [],
+            'import_status' => 'processing',
+            'import_error' => null,
+            'import_total_tasks' => 1,
+            'import_completed_tasks' => 0,
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+
+        $job = new ProcessImportedProductDetailImage(
+            $product->id,
+            'https://img.alicdn.com/imgextra/i3/1071802411/test.jpg',
+            'gallery',
+            1,
+            'redraw',
+        );
+
+        try {
+            $job->handle(app(ImportedProductSyncService::class));
+            $this->fail('Transient Fogot failures should be rethrown so the queue can retry the image job.');
+        } catch (TransientFogotApiException $exception) {
+            $product->refresh();
+            $this->assertSame(0, $product->import_completed_tasks);
+            $this->assertNull($product->import_error);
+
+            $job->failed($exception);
+        }
+
+        $product->refresh();
+        $this->assertSame(1, $product->import_completed_tasks);
+        $this->assertStringContainsString('Gallery image processing failed', $product->import_error);
+        $this->assertStringContainsString('after 1 attempt(s)', $product->import_error);
+    }
+
+    public function test_description_classifier_failure_continues_to_translate_image(): void
+    {
+        Config::set('services.fogot.retry_times', 0);
+        Config::set('services.fogot.retry_sleep_ms', 0);
+        Config::set('services.fogot.retry_statuses', [500]);
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response(['detail' => 'server error'], 500),
+            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('translated-description'),
+                    ],
+                ],
+            ]),
+        ]);
+
+        Storage::fake('public');
+
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'CLASSIFIER-FAIL-OPEN-1',
+            'name' => 'Classifier fail open product',
+            'description' => 'Classifier fail open description',
+            'source_payload' => [],
+            'import_status' => 'processing',
+            'import_error' => null,
+            'import_total_tasks' => 1,
+            'import_completed_tasks' => 0,
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+
+        app(ImportedProductSyncService::class)->processDetailImage(
+            $product,
+            'https://img.alicdn.com/imgextra/i2/3891274461/test.jpg',
+            'description',
+            0,
+            'translate',
+            true,
+        );
+
+        $product->refresh();
+        $this->assertSame(1, $product->import_completed_tasks);
+        $this->assertNull($product->import_error);
+        $this->assertSame('classifier_unavailable', data_get($product->import_api_debug, 'classify_description_results.0.status'));
+        $this->assertSame('processed', data_get($product->import_api_debug, 'translate_description_results.0.status'));
     }
 
     public function test_imported_product_uses_source_images_until_media_fully_completes(): void

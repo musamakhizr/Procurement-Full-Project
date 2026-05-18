@@ -37,10 +37,14 @@ return [
 
     'fogot' => [
         'base_url' => env('FOGOT_API_BASE_URL', 'https://py.fogot.cn/api/product'),
-        'timeout' => (int) env('FOGOT_API_TIMEOUT', 300),
+        'timeout' => (int) env('FOGOT_API_TIMEOUT', 600),
         'connect_timeout' => (int) env('FOGOT_API_CONNECT_TIMEOUT', 30),
-        'retry_times' => (int) env('FOGOT_API_RETRY_TIMES', 2),
-        'retry_sleep_ms' => (int) env('FOGOT_API_RETRY_SLEEP_MS', 3000),
+        'retry_times' => (int) env('FOGOT_API_RETRY_TIMES', 0),
+        'retry_sleep_ms' => (int) env('FOGOT_API_RETRY_SLEEP_MS', 0),
+        'retry_statuses' => array_values(array_filter(array_map(
+            'intval',
+            explode(',', env('FOGOT_API_RETRY_STATUSES', '420,429,500,502,503,504')),
+        ))),
         'category_dict_text' => env('FOGOT_CATEGORY_DICT_TEXT', ''),
     ],
 

@@ -12,9 +12,9 @@ class ClassifyImportedProductCategory implements ShouldQueue
 {
     use Dispatchable, Queueable;
 
-    public int $timeout = 180;
+    public int $timeout = 1800;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
     public bool $failOnTimeout = false;
 

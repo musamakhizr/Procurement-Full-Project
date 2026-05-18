@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\TransientFogotApiException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -227,6 +229,11 @@ class FogotProductMediaService
         $connectTimeout = max((int) config('services.fogot.connect_timeout', 10), 3);
         $retryTimes = max((int) config('services.fogot.retry_times', 0), 0);
         $retrySleepMs = max((int) config('services.fogot.retry_sleep_ms', 500), 0);
+        $retryStatuses = collect(config('services.fogot.retry_statuses', []))
+            ->map(fn ($status) => (int) $status)
+            ->filter()
+            ->values()
+            ->all();
 
         $attempts = $retryTimes + 1;
         $response = null;
@@ -239,7 +246,7 @@ class FogotProductMediaService
                     ->connectTimeout($connectTimeout)
                     ->post(rtrim((string) config('services.fogot.base_url'), '/').$path, $payload);
 
-                if (! $response->serverError() && $response->status() !== 429) {
+                if (! in_array($response->status(), $retryStatuses, true)) {
                     break;
                 }
             } catch (Throwable $exception) {
@@ -252,11 +259,29 @@ class FogotProductMediaService
         }
 
         if ($response === null) {
-            throw new RuntimeException("Fogot API request failed for [{$path}]: {$lastException?->getMessage()}");
+            throw new TransientFogotApiException(
+                path: $path,
+                status: null,
+                attempts: $attempts,
+                message: "Fogot API request failed for [{$path}] after {$attempts} attempt(s): {$lastException?->getMessage()}",
+                previous: $lastException,
+            );
         }
 
         if ($response->failed()) {
-            throw new RuntimeException("Fogot API request failed for [{$path}] with status {$response->status()}.");
+            $body = $response->json() ?? $response->body();
+            $message = "Fogot API request failed for [{$path}] with status {$response->status()} after {$attempts} attempt(s): ".Str::limit(json_encode($body), 500);
+
+            if (in_array($response->status(), $retryStatuses, true)) {
+                throw new TransientFogotApiException(
+                    path: $path,
+                    status: $response->status(),
+                    attempts: $attempts,
+                    message: $message,
+                );
+            }
+
+            throw new RuntimeException($message);
         }
 
         $json = $response->json();

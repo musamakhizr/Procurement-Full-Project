@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\TransientFogotApiException;
 use App\Jobs\ClassifyImportedProductCategory;
 use App\Jobs\ProcessImportedProductDetailImage;
 use App\Jobs\ProcessImportedProductMainImage;
@@ -151,7 +152,7 @@ class ImportedProductSyncService
         }
     }
 
-    public function processMainImage(Product $product, string $imageUrl): void
+    public function processMainImage(Product $product, string $imageUrl, bool $retryTransientFailures = false): void
     {
         try {
             $processedImage = $this->fogotProductMediaService->redrawMainImage($imageUrl);
@@ -171,20 +172,38 @@ class ImportedProductSyncService
 
             $this->markImportTaskFinished($product, $stored ? null : "Unable to store main image [{$imageUrl}].");
         } catch (Throwable $exception) {
-            $this->rememberImageProcessingResult($product, 'redraw_gallery_results', $imageUrl, 'failed');
-            $this->markImportTaskFinished($product, "Main image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
-            $this->logTaskWarning('Imported main image processing failed.', $product, $imageUrl, $exception);
+            if ($retryTransientFailures && $this->isTransientFogotFailure($exception)) {
+                $this->logTaskWarning('Imported main image processing hit a transient Fogot failure; queue will retry.', $product, $imageUrl, $exception);
+
+                throw $exception;
+            }
+
+            $this->recordMainImageFailure($product, $imageUrl, $exception);
         }
     }
 
-    public function processDetailImage(Product $product, string $imageUrl, string $section, int $sortOrder, string $processor = 'translate'): void
+    public function processDetailImage(Product $product, string $imageUrl, string $section, int $sortOrder, string $processor = 'translate', bool $retryTransientFailures = false): void
     {
         try {
-            if ($section === 'description' && ! $this->fogotProductMediaService->shouldKeepDescriptionImage($imageUrl)) {
-                $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'rejected');
-                $this->markImportTaskFinished($product);
+            $descriptionClassifierUnavailable = false;
 
-                return;
+            if ($section === 'description') {
+                try {
+                    if (! $this->fogotProductMediaService->shouldKeepDescriptionImage($imageUrl)) {
+                        $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'rejected');
+                        $this->markImportTaskFinished($product);
+
+                        return;
+                    }
+                } catch (Throwable $exception) {
+                    $descriptionClassifierUnavailable = true;
+                    $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'classifier_unavailable');
+                    $this->logTaskWarning('Description image classification failed; continuing with translation.', $product, $imageUrl, $exception, [
+                        'section' => $section,
+                        'sort_order' => $sortOrder,
+                        'processor' => $processor,
+                    ]);
+                }
             }
 
             $processedImage = match ($processor) {
@@ -192,7 +211,7 @@ class ImportedProductSyncService
                 default => $this->fogotProductMediaService->translateImage($imageUrl)[0] ?? null,
             };
 
-            if ($section === 'description') {
+            if ($section === 'description' && ! $descriptionClassifierUnavailable) {
                 $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'approved');
             }
 
@@ -221,18 +240,40 @@ class ImportedProductSyncService
 
             $this->markImportTaskFinished($product, $stored ? null : "Unable to store {$section} image [{$imageUrl}].");
         } catch (Throwable $exception) {
-            $resultKey = match ($processor) {
-                'redraw' => 'redraw_gallery_results',
-                default => $section === 'description' ? 'translate_description_results' : 'translate_variant_results',
-            };
-            $this->rememberImageProcessingResult($product, $resultKey, $imageUrl, 'failed');
-            $this->markImportTaskFinished($product, ucfirst($section)." image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
-            $this->logTaskWarning('Imported detail image processing failed.', $product, $imageUrl, $exception, [
-                'section' => $section,
-                'sort_order' => $sortOrder,
-                'processor' => $processor,
-            ]);
+            if ($retryTransientFailures && $this->isTransientFogotFailure($exception)) {
+                $this->logTaskWarning('Imported detail image processing hit a transient Fogot failure; queue will retry.', $product, $imageUrl, $exception, [
+                    'section' => $section,
+                    'sort_order' => $sortOrder,
+                    'processor' => $processor,
+                ]);
+
+                throw $exception;
+            }
+
+            $this->recordDetailImageFailure($product, $imageUrl, $section, $sortOrder, $processor, $exception);
         }
+    }
+
+    public function recordMainImageFailure(Product $product, string $imageUrl, Throwable $exception): void
+    {
+        $this->rememberImageProcessingResult($product, 'redraw_gallery_results', $imageUrl, 'failed');
+        $this->markImportTaskFinished($product, "Main image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+        $this->logTaskWarning('Imported main image processing failed.', $product, $imageUrl, $exception);
+    }
+
+    public function recordDetailImageFailure(Product $product, string $imageUrl, string $section, int $sortOrder, string $processor, Throwable $exception): void
+    {
+        $resultKey = match ($processor) {
+            'redraw' => 'redraw_gallery_results',
+            default => $section === 'description' ? 'translate_description_results' : 'translate_variant_results',
+        };
+        $this->rememberImageProcessingResult($product, $resultKey, $imageUrl, 'failed');
+        $this->markImportTaskFinished($product, ucfirst($section)." image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+        $this->logTaskWarning('Imported detail image processing failed.', $product, $imageUrl, $exception, [
+            'section' => $section,
+            'sort_order' => $sortOrder,
+            'processor' => $processor,
+        ]);
     }
 
     public function classifyCategory(Product $product): void
@@ -443,6 +484,11 @@ class ImportedProductSyncService
     private function shouldClassifyProductCategory(Product $product): bool
     {
         return trim($this->buildProductCategoryText($product)) !== '';
+    }
+
+    private function isTransientFogotFailure(Throwable $exception): bool
+    {
+        return $exception instanceof TransientFogotApiException;
     }
 
     private function buildProductCategoryText(Product $product): string
