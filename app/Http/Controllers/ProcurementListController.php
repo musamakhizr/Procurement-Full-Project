@@ -28,10 +28,14 @@ class ProcurementListController extends Controller
     public function store(StoreProcurementListItemRequest $request)
     {
         $product = Product::query()->findOrFail($request->integer('product_id'));
+        $product->loadMissing('variants');
+
         $variantId = $request->integer('product_variant_id') ?: null;
         $variant = $variantId
             ? ProductVariant::query()->where('product_id', $product->id)->findOrFail($variantId)
             : null;
+        $this->ensureProductCanBeAdded($product, $variant);
+
         $item = $this->upsertItem(
             $request->user()->id,
             $product,
@@ -50,10 +54,13 @@ class ProcurementListController extends Controller
             return collect($request->input('items'))
                 ->map(function (array $payload) use ($request) {
                     $product = Product::query()->findOrFail((int) $payload['product_id']);
+                    $product->loadMissing('variants');
+
                     $variantId = ! empty($payload['product_variant_id']) ? (int) $payload['product_variant_id'] : null;
                     $variant = $variantId
                         ? ProductVariant::query()->where('product_id', $product->id)->findOrFail($variantId)
                         : null;
+                    $this->ensureProductCanBeAdded($product, $variant);
 
                     return $this->upsertItem(
                         $request->user()->id,
@@ -118,5 +125,28 @@ class ProcurementListController extends Controller
                 'variant_options' => $variant?->option_values,
             ],
         );
+    }
+
+    private function ensureProductCanBeAdded(Product $product, ?ProductVariant $variant): void
+    {
+        abort_unless(
+            $product->is_active
+            && $product->import_status === 'completed',
+            404,
+            'Product is not available.',
+        );
+
+        if (! $product->hasVariants()) {
+            abort_if((int) $product->stock_quantity <= 0, 422, 'This product is out of stock.');
+            return;
+        }
+
+        if ($variant !== null) {
+            abort_if((int) $variant->stock_quantity <= 0, 422, 'This product variation is out of stock.');
+            return;
+        }
+
+        abort_if($product->availableVariantsCount() <= 0, 422, 'This product is out of stock.');
+        abort(422, 'Please select an available product variation.');
     }
 }

@@ -7,8 +7,10 @@ use App\Http\Resources\ProductDetailResource;
 use App\Http\Resources\ProductListResource;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class CatalogController extends Controller
 {
@@ -53,9 +55,10 @@ class CatalogController extends Controller
         $sort = $request->string('sort')->toString();
         $page = max(1, (int) $request->input('page', 1));
         $perPage = min(24, max(1, (int) $request->input('per_page', 12)));
-        $cacheKey = $this->catalogProductsCacheKey($request, $sort, $page, $perPage);
+        $isAdmin = $this->requestUserIsAdmin($request);
+        $cacheKey = $this->catalogProductsCacheKey($request, $sort, $page, $perPage, $isAdmin);
 
-        $products = Cache::remember($cacheKey, now()->addSeconds(30), function () use ($request, $sort, $page, $perPage) {
+        $products = Cache::remember($cacheKey, now()->addSeconds(30), function () use ($request, $sort, $page, $perPage, $isAdmin) {
             return Product::query()
                 ->select(self::PRODUCT_LIST_COLUMNS)
                 ->with([
@@ -63,7 +66,15 @@ class CatalogController extends Controller
                     'category.parent:id,parent_id,name,slug',
                     'priceTiers:id,product_id,min_quantity,max_quantity,price',
                 ])
+                ->withCount([
+                    'variants',
+                    'variants as available_variants_count' => fn ($query) => $query->where('stock_quantity', '>', 0),
+                ])
+                ->withSum([
+                    'variants as available_variants_stock_quantity' => fn ($query) => $query->where('stock_quantity', '>', 0),
+                ], 'stock_quantity')
                 ->where('is_active', true)
+                ->when(! $isAdmin, fn ($query) => $query->where('import_status', 'completed'))
                 ->when($request->filled('category'), function ($query) use ($request) {
                     $categorySlug = $request->string('category')->toString();
 
@@ -100,16 +111,25 @@ class CatalogController extends Controller
         return ProductListResource::collection($products);
     }
 
-    public function show(Product $product): ProductDetailResource
+    public function show(Request $request, Product $product): ProductDetailResource
     {
+        $isAdmin = $this->requestUserIsAdmin($request);
+
+        abort_unless(
+            $product->is_active
+            && ($isAdmin || $product->import_status === 'completed'),
+            404,
+        );
+
         $product->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
 
         return new ProductDetailResource($product);
     }
 
-    private function catalogProductsCacheKey(Request $request, string $sort, int $page, int $perPage): string
+    private function catalogProductsCacheKey(Request $request, string $sort, int $page, int $perPage, bool $isAdmin): string
     {
         $filters = [
+            'viewer' => $isAdmin ? 'admin' : 'public',
             'category' => $request->string('category')->toString(),
             'subcategory' => $request->string('subcategory')->toString(),
             'search' => $request->string('search')->toString(),
@@ -122,6 +142,19 @@ class CatalogController extends Controller
             'per_page' => $perPage,
         ];
 
-        return 'catalog:products:v2:'.md5(json_encode($filters));
+        return 'catalog:products:v4:'.md5(json_encode($filters));
+    }
+
+    private function requestUserIsAdmin(Request $request): bool
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User && $request->bearerToken()) {
+            $accessToken = PersonalAccessToken::findToken($request->bearerToken());
+            $tokenable = $accessToken?->tokenable;
+            $user = $tokenable instanceof User ? $tokenable : null;
+        }
+
+        return $user instanceof User && $user->role === 'admin';
     }
 }

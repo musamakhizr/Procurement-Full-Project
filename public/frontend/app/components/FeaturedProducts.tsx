@@ -23,6 +23,16 @@ export function FeaturedProducts() {
 
   const handleAddToList = async (product: ProductSummary, event: React.MouseEvent) => {
     event.preventDefault();
+
+    if (product.stock_quantity <= 0) {
+      return;
+    }
+
+    if (product.has_variants) {
+      navigate(`/marketplace/product/${product.id}`);
+      return;
+    }
+
     if (!isAuthenticated) {
       navigate('/sign-in');
       return;
@@ -62,29 +72,43 @@ export function FeaturedProducts() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <Link
-              key={product.id}
-              to={`/marketplace/product/${product.id}`}
-              className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block"
-            >
-              <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
-                <img
-                  src={product.image ?? `https://placehold.co/800x600?text=${encodeURIComponent(product.name.split(' ')[0])}`}
-                  alt={product.name}
-                  className="w-full h-full object-contain group-hover:scale-105 transition-transform"
-                />
-                {product.verified && (
-                  <span className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    Verified
-                  </span>
-                )}
-              </div>
-              <div className="p-5">
-                <div className="text-xs text-[#7C3AED] font-semibold mb-1">{product.category}</div>
-                <h3 className="font-bold text-slate-900 mb-3 group-hover:text-[#4F6BFF] transition-colors line-clamp-2 text-sm">
-                  {product.name}
-                </h3>
+          {products.map((product) => {
+            const isOutOfStock = product.stock_quantity <= 0;
+            const productIsInList = isInList(product.id);
+            const addButtonLabel = isOutOfStock
+              ? 'Out of Stock'
+              : product.has_variants
+                ? 'Select Options'
+                : productIsInList
+                  ? 'In List'
+                  : 'Add to List';
+
+            return (
+              <Link
+                key={product.id}
+                to={`/marketplace/product/${product.id}`}
+                className={`bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block ${isOutOfStock ? 'opacity-60' : ''}`}
+              >
+                <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
+                  <img
+                    src={product.image ?? `https://placehold.co/800x600?text=${encodeURIComponent(product.name.split(' ')[0])}`}
+                    alt={product.name}
+                    className={`w-full h-full object-contain transition-transform ${isOutOfStock ? 'grayscale' : 'group-hover:scale-105'}`}
+                  />
+                  {product.verified && (
+                    <span className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      Verified
+                    </span>
+                  )}
+                  {isOutOfStock && (
+                    <span className="absolute left-3 top-3 rounded-full bg-slate-900/80 px-2.5 py-1 text-xs font-bold text-white">Out of Stock</span>
+                  )}
+                </div>
+                <div className="p-5">
+                  <div className="text-xs text-[#7C3AED] font-semibold mb-1">{product.category}</div>
+                  <h3 className="font-bold text-slate-900 mb-3 group-hover:text-[#4F6BFF] transition-colors line-clamp-2 text-sm">
+                    {product.name}
+                  </h3>
 
                 <div className="space-y-1.5 mb-3 pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -104,20 +128,23 @@ export function FeaturedProducts() {
                   <div className="font-bold text-slate-900 text-2xl">¥{product.unit_price.toFixed(2)}</div>
                 </div>
 
-                <button
-                  onClick={(event) => void handleAddToList(product, event)}
-                  className={`w-full py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                    isInList(product.id)
-                      ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                      : 'bg-[#4F6BFF] text-white hover:bg-[#3D56E0]'
-                  }`}
-                >
-                  {isInList(product.id) && <Check className="w-4 h-4" />}
-                  {isInList(product.id) ? 'In List' : 'Add to List'}
-                </button>
-              </div>
-            </Link>
-          ))}
+                  <button
+                    onClick={(event) => void handleAddToList(product, event)}
+                    className={`w-full py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                      isOutOfStock
+                        ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                        : productIsInList && !product.has_variants
+                          ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                          : 'bg-[#4F6BFF] text-white hover:bg-[#3D56E0]'
+                    }`}
+                  >
+                    {!isOutOfStock && !product.has_variants && productIsInList && <Check className="w-4 h-4" />}
+                    {addButtonLabel}
+                  </button>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

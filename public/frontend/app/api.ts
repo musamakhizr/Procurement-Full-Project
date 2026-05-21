@@ -41,6 +41,8 @@ export interface ProductSummary {
   verified: boolean;
   customizable: boolean;
   stock_quantity: number;
+  has_variants: boolean;
+  available_variants_count: number;
   status: string;
   import_status?: string | null;
   import_error?: string | null;
@@ -105,6 +107,8 @@ export interface ProductDetail {
   lead_time: string;
   in_stock: boolean;
   stock_quantity: number;
+  has_variants: boolean;
+  available_variants_count: number;
   is_verified: boolean;
   is_customizable: boolean;
   default_variant_id: number | null;
@@ -582,6 +586,11 @@ export async function fetchAdminProducts(search = '', page = 1) {
   const { data } = await api.get<PaginatedResponse<ProductSummary>>('/admin/products', {
     params: { search, page },
   });
+  return data;
+}
+
+export async function fetchAdminProduct(id: number) {
+  const { data } = await api.get<ProductDetail>(`/admin/products/${id}`);
   return data;
 }
 

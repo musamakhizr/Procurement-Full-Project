@@ -13,6 +13,8 @@ class ProductListResource extends JsonResource
         $tierOne = $this->priceTiers->get(0);
         $tierTwo = $this->priceTiers->get(1) ?? $tierOne;
         $hasAttribute = fn (string $attribute) => array_key_exists($attribute, $this->resource->getAttributes());
+        $hasVariants = $this->hasVariants();
+        $availableStockQuantity = $this->availableStockQuantity();
 
         return [
             'id' => $this->id,
@@ -28,8 +30,10 @@ class ProductListResource extends JsonResource
             'lead_time' => $this->formatted_lead_time,
             'verified' => $this->is_verified,
             'customizable' => $this->is_customizable,
-            'stock_quantity' => $this->stock_quantity,
-            'status' => $this->stock_quantity <= 1000 ? 'low-stock' : 'active',
+            'stock_quantity' => $availableStockQuantity,
+            'has_variants' => $hasVariants,
+            'available_variants_count' => $hasVariants ? $this->availableVariantsCount() : 0,
+            'status' => $availableStockQuantity <= 0 ? 'out-of-stock' : ($availableStockQuantity <= 1000 ? 'low-stock' : 'active'),
             'import_status' => $this->import_status,
             'import_error' => $this->when($hasAttribute('import_error'), $this->import_error),
             'import_total_tasks' => $this->import_total_tasks,

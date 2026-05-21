@@ -74,7 +74,7 @@ function writeProductCache(key: string, payload: Omit<CatalogCachePayload, 'cach
 export function MarketplacePage() {
   const { t, language } = useLanguage();
   const { addItem, isInList } = useProcurementList();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -148,6 +148,7 @@ export function MarketplacePage() {
     const loadProducts = async () => {
       const requestId = ++requestIdRef.current;
       const params = {
+        viewer: user?.is_admin ? 'admin' : 'public',
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         subcategory: selectedSubcategory ?? undefined,
         search: debouncedSearchQuery || undefined,
@@ -223,7 +224,7 @@ export function MarketplacePage() {
 
     setSearchParams(nextParams, { replace: true });
     void loadProducts();
-  }, [customizableOnly, debouncedSearchQuery, leadTimeMax, moqMax, page, selectedCategory, selectedSubcategory, setSearchParams, sort, verifiedOnly]);
+  }, [customizableOnly, debouncedSearchQuery, leadTimeMax, moqMax, page, selectedCategory, selectedSubcategory, setSearchParams, sort, user?.is_admin, verifiedOnly]);
 
   useEffect(() => {
     const trigger = loadMoreRef.current;
@@ -260,6 +261,15 @@ export function MarketplacePage() {
 
   const handleAddToList = async (product: ProductSummary, event: React.MouseEvent) => {
     event.preventDefault();
+
+    if (product.stock_quantity <= 0) {
+      return;
+    }
+
+    if (product.has_variants) {
+      navigate(`/marketplace/product/${product.id}`);
+      return;
+    }
 
     if (!isAuthenticated) {
       navigate('/sign-in');
@@ -452,45 +462,72 @@ export function MarketplacePage() {
           <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500">Loading catalog...</div>
         ) : (
           <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' : 'space-y-4'}>
-            {products.map((product) => (
-              <Link key={product.id} to={`/marketplace/product/${product.id}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block">
-                <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
-                  <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
-                </div>
-                <div className="p-5">
-                  <div className="text-xs text-[#7C3AED] font-semibold mb-2">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</div>
-                  <h3 className="font-bold text-slate-900 mb-3 group-hover:text-[#4F6BFF] transition-colors line-clamp-2">{product.name}</h3>
+            {products.map((product) => {
+              const isOutOfStock = product.stock_quantity <= 0;
+              const productIsInList = isInList(product.id);
+              const addButtonLabel = isOutOfStock
+                ? 'Out of Stock'
+                : product.has_variants
+                  ? 'Select Options'
+                  : productIsInList
+                    ? t('marketplace.addedToList')
+                    : t('marketplace.addToList');
 
-                  <div className="space-y-1.5 mb-3 pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Package className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="font-medium">{t('marketplace.moq')}</span>
-                      <span>{product.moq} {t('marketplace.units')}</span>
+              return (
+                <Link key={product.id} to={`/marketplace/product/${product.id}`} className={`bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#4F6BFF]/40 hover:shadow-md transition-all group block ${isOutOfStock ? 'opacity-60' : ''}`}>
+                  <div className="aspect-square bg-white relative overflow-hidden flex items-center justify-center">
+                    <img src={product.image ?? 'https://placehold.co/800x600?text=Product'} alt={product.name} loading="lazy" decoding="async" className={`w-full h-full object-contain transition-transform ${isOutOfStock ? 'grayscale' : 'group-hover:scale-105'}`} />
+                    {isOutOfStock && (
+                      <span className="absolute left-3 top-3 rounded-full bg-slate-900/80 px-2.5 py-1 text-xs font-bold text-white">Out of Stock</span>
+                    )}
+                  </div>
+                  <div className="p-5">
+                    <div className="text-xs text-[#7C3AED] font-semibold mb-2">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</div>
+                    <h3 className="font-bold text-slate-900 mb-3 group-hover:text-[#4F6BFF] transition-colors line-clamp-2">{product.name}</h3>
+
+                    <div className="space-y-1.5 mb-3 pb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <Package className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="font-medium">{t('marketplace.moq')}</span>
+                        <span>{product.moq} {t('marketplace.units')}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="font-medium">{t('marketplace.leadTime')}</span>
+                        <span>{product.lead_time}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="font-medium">{t('marketplace.leadTime')}</span>
-                      <span>{product.lead_time}</span>
+
+                    <div className="mb-4">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('product.unitPrice')}</div>
+                      <div className="font-bold text-slate-900 text-2xl">{currencySymbol}{product.unit_price.toFixed(2)}</div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        aria-disabled={isOutOfStock}
+                        tabIndex={isOutOfStock ? -1 : 0}
+                        onClick={(event) => void handleAddToList(product, event)}
+                        className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                          isOutOfStock
+                            ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                            : productIsInList
+                              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                              : 'bg-[#4F6BFF] text-white hover:bg-[#3D56E0]'
+                        }`}
+                      >
+                        {!isOutOfStock && !product.has_variants && productIsInList && <Check className="w-4 h-4" />}
+                        <span>{addButtonLabel}</span>
+                      </button>
+                      <button onClick={(event) => handleRequestQuote(product.id, event)} className="px-4 py-2.5 text-sm border border-slate-200 text-slate-700 font-semibold rounded-lg hover:border-[#4F6BFF] hover:text-[#4F6BFF] transition-colors">
+                        {t('marketplace.quote')}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="mb-4">
-                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('product.unitPrice')}</div>
-                    <div className="font-bold text-slate-900 text-2xl">{currencySymbol}{product.unit_price.toFixed(2)}</div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button onClick={(event) => void handleAddToList(product, event)} className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${isInList(product.id) ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-[#4F6BFF] text-white hover:bg-[#3D56E0]'}`}>
-                      {isInList(product.id) && <Check className="w-4 h-4" />}
-                      <span>{isInList(product.id) ? t('marketplace.addedToList') : t('marketplace.addToList')}</span>
-                    </button>
-                    <button onClick={(event) => handleRequestQuote(product.id, event)} className="px-4 py-2.5 text-sm border border-slate-200 text-slate-700 font-semibold rounded-lg hover:border-[#4F6BFF] hover:text-[#4F6BFF] transition-colors">
-                      {t('marketplace.quote')}
-                    </button>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
 

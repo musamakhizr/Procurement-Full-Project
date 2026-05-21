@@ -31,6 +31,7 @@ class ProcurementBulkApiTest extends TestCase
             'lead_time_max_days' => 4,
             'stock_quantity' => 100,
             'base_price' => 10.00,
+            'import_status' => 'completed',
         ]);
 
         $blueVariant = $product->variants()->create([

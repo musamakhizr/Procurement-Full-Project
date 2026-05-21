@@ -66,6 +66,8 @@ class ProductDetailResource extends JsonResource
             ->values()
             ->all();
         $defaultVariantId = $variants->firstWhere('is_default', true)['id'] ?? $variants->first()['id'] ?? null;
+        $hasVariants = $this->hasVariants();
+        $availableStockQuantity = $this->availableStockQuantity();
 
         return [
             'id' => $this->id,
@@ -83,8 +85,10 @@ class ProductDetailResource extends JsonResource
             'base_price' => (float) $this->base_price,
             'moq' => $this->moq,
             'lead_time' => $this->formatted_lead_time,
-            'in_stock' => $this->stock_quantity > 0,
-            'stock_quantity' => $this->stock_quantity,
+            'in_stock' => $availableStockQuantity > 0,
+            'stock_quantity' => $availableStockQuantity,
+            'has_variants' => $hasVariants,
+            'available_variants_count' => $hasVariants ? $this->availableVariantsCount() : 0,
             'is_verified' => $this->is_verified,
             'is_customizable' => $this->is_customizable,
             'default_variant_id' => $defaultVariantId,

@@ -2,7 +2,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw, Store } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { createAdminProduct, deleteAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, fetchProduct, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, importAdminShopSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
+import { createAdminProduct, deleteAdminProduct, fetchAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, importAdminShopSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
 import { formatApiCategoryL1 } from '../utils/category';
 
 const EMPTY_FORM = {
@@ -383,7 +383,7 @@ export function AdminProductsPage() {
     });
 
     try {
-      const productDetail = await fetchProduct(product.id);
+      const productDetail = await fetchAdminProduct(product.id);
       const detailLeadTime = parseLeadTime(productDetail.lead_time);
 
       setForm((currentForm) => ({

@@ -98,6 +98,49 @@ class Product extends Model
         return (float) ($tier?->price ?? $this->base_price);
     }
 
+    public function hasVariants(): bool
+    {
+        if (array_key_exists('variants_count', $this->attributes)) {
+            return (int) $this->attributes['variants_count'] > 0;
+        }
+
+        if ($this->relationLoaded('variants')) {
+            return $this->variants->isNotEmpty();
+        }
+
+        return $this->variants()->exists();
+    }
+
+    public function availableVariantsCount(): int
+    {
+        if (array_key_exists('available_variants_count', $this->attributes)) {
+            return (int) $this->attributes['available_variants_count'];
+        }
+
+        if ($this->relationLoaded('variants')) {
+            return $this->variants->where('stock_quantity', '>', 0)->count();
+        }
+
+        return $this->variants()->where('stock_quantity', '>', 0)->count();
+    }
+
+    public function availableStockQuantity(): int
+    {
+        if (! $this->hasVariants()) {
+            return max((int) $this->stock_quantity, 0);
+        }
+
+        if (array_key_exists('available_variants_stock_quantity', $this->attributes)) {
+            return max((int) $this->attributes['available_variants_stock_quantity'], 0);
+        }
+
+        if ($this->relationLoaded('variants')) {
+            return $this->variants->sum(fn (ProductVariant $variant) => max((int) $variant->stock_quantity, 0));
+        }
+
+        return max((int) $this->variants()->where('stock_quantity', '>', 0)->sum('stock_quantity'), 0);
+    }
+
     /**
      * @return Collection<int, string>
      */
@@ -158,15 +201,16 @@ class Product extends Model
         return $this->mergedImagePathsForSection('description', $sourceDescriptionImages);
     }
 
-   private function shouldPreferStoredMedia(): bool
-{
-    return $this->import_status === 'completed';
-}
+    private function shouldPreferStoredMedia(): bool
+    {
+        return $this->import_status === 'completed' && blank($this->import_error);
+    }
 
-private function shouldUseSourceMediaOnly(): bool
-{
-    return in_array($this->import_status, ['pending', 'processing', 'failed'], true);
-}
+    private function shouldUseSourceMediaOnly(): bool
+    {
+        return filled($this->import_error)
+            || in_array($this->import_status, ['pending', 'processing', 'failed'], true);
+    }
 
     /**
      * @param  Collection<int, string>  $sourceGalleryImages

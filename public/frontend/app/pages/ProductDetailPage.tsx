@@ -103,7 +103,10 @@ export function ProductDetailPage() {
       return;
     }
 
-    const defaultVariant = product.variants.find((variant) => variant.id === product.default_variant_id)
+    const defaultVariant = product.variants.find((variant) => variant.id === product.default_variant_id && variant.stock_quantity > 0)
+      ?? product.variants.find((variant) => variant.is_default && variant.stock_quantity > 0)
+      ?? product.variants.find((variant) => variant.stock_quantity > 0)
+      ?? product.variants.find((variant) => variant.id === product.default_variant_id)
       ?? product.variants.find((variant) => variant.is_default)
       ?? product.variants[0];
 
@@ -120,6 +123,8 @@ export function ProductDetailPage() {
       }
 
       const hasCompatibleVariant = product.variants.some((variant) =>
+        variant.stock_quantity > 0
+        &&
         variant.option_values.every((option) => currentOptions[option.group_name] === option.key)
       );
 
@@ -190,13 +195,16 @@ export function ProductDetailPage() {
     ?? 'https://placehold.co/800x800?text=Product';
   const currentPrice = currentUnitPrice;
   const categoryPath = formatApiCategoryPath(product.cat_from_api, language, product.category);
+  const productCanBeAdded = product.stock_quantity > 0;
 
   const isOptionAvailable = (groupName: string, optionKey: string) => {
     if (product.variants.length === 0) {
-      return true;
+      return productCanBeAdded;
     }
 
     return product.variants.some((variant) =>
+      variant.stock_quantity > 0
+      &&
       variant.option_values.some((option) => option.group_name === groupName && option.key === optionKey)
       && variant.option_values.every((option) => option.group_name === groupName || selectedOptions[option.group_name] === option.key)
     );
@@ -209,6 +217,8 @@ export function ProductDetailPage() {
     };
 
     const exactMatch = product.variants.find((variant) =>
+      variant.stock_quantity > 0
+      &&
       variant.option_values.every((option) => nextSelection[option.group_name] === option.key)
     );
 
@@ -219,6 +229,8 @@ export function ProductDetailPage() {
     }
 
     const compatibleVariant = product.variants.find((variant) =>
+      variant.stock_quantity > 0
+      &&
       variant.option_values.some((option) => option.group_name === groupName && option.key === optionKey)
     );
 
@@ -233,6 +245,10 @@ export function ProductDetailPage() {
   };
 
   const selectVariantForPreview = (variant: ProductDetail['variants'][number]) => {
+    if (variant.stock_quantity <= 0) {
+      return;
+    }
+
     setSelectedImage(0);
     setSelectedOptions(
       Object.fromEntries(variant.option_values.map((option) => [option.group_name, option.key]))
@@ -240,6 +256,10 @@ export function ProductDetailPage() {
   };
 
   const normalizeVariantQuantity = (variant: ProductDetail['variants'][number], quantityValue: number) => {
+    if (variant.stock_quantity <= 0) {
+      return 0;
+    }
+
     if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
       return 0;
     }
@@ -252,6 +272,10 @@ export function ProductDetailPage() {
   };
 
   const updateVariantQuantity = (variant: ProductDetail['variants'][number], quantityValue: number) => {
+    if (variant.stock_quantity <= 0) {
+      return;
+    }
+
     const nextQuantity = normalizeVariantQuantity(variant, quantityValue);
 
     selectVariantForPreview(variant);
@@ -269,6 +293,10 @@ export function ProductDetailPage() {
   };
 
   const adjustVariantQuantity = (variant: ProductDetail['variants'][number], delta: number) => {
+    if (variant.stock_quantity <= 0) {
+      return;
+    }
+
     const currentQuantity = variantQuantities[variant.id] ?? 0;
     const minimumQuantity = Math.max(1, product.moq);
     const nextQuantity = delta > 0 && currentQuantity === 0
@@ -318,6 +346,10 @@ export function ProductDetailPage() {
   const handleAddToList = async () => {
     if (!isAuthenticated) {
       navigate('/sign-in');
+      return;
+    }
+
+    if (!productCanBeAdded || (selectedVariant && selectedVariant.stock_quantity <= 0)) {
       return;
     }
 
@@ -424,6 +456,7 @@ export function ProductDetailPage() {
                         const rowImage = variant.image ?? product.image_source_url ?? 'https://placehold.co/120x120?text=SKU';
                         const rowLabel = variant.label ?? variant.sku_id ?? variant.properties_name ?? product.name;
                         const maxStock = variant.stock_quantity || 0;
+                        const isOutOfStock = maxStock <= 0;
                         const isSelected = rowQuantity > 0;
                         const isCurrent = selectedVariant?.id === variant.id;
                         const optionLabel = variant.option_values
@@ -434,16 +467,23 @@ export function ProductDetailPage() {
                           <div
                             key={variant.id}
                             role="button"
-                            tabIndex={0}
+                            tabIndex={isOutOfStock ? -1 : 0}
                             onClick={() => selectVariantForPreview(variant)}
                             onKeyDown={(event) => {
+                              if (isOutOfStock) {
+                                return;
+                              }
+
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
                                 selectVariantForPreview(variant);
                               }
                             }}
-                            className={`grid cursor-pointer grid-cols-[56px_minmax(0,1fr)] gap-3 border-l-4 px-4 py-3 transition-all md:grid-cols-[56px_minmax(0,1fr)_90px_76px_132px_86px] md:items-center ${
-                              isSelected
+                            aria-disabled={isOutOfStock}
+                            className={`grid grid-cols-[56px_minmax(0,1fr)] gap-3 border-l-4 px-4 py-3 transition-all md:grid-cols-[56px_minmax(0,1fr)_90px_76px_132px_86px] md:items-center ${
+                              isOutOfStock
+                                ? 'cursor-not-allowed border-l-transparent bg-slate-50 opacity-45'
+                                : isSelected
                                 ? 'border-l-[#4F6BFF] bg-[#EEF2FF]/70'
                                 : isCurrent
                                   ? 'border-l-[#F97316] bg-[#FFF7ED]/70'
@@ -462,6 +502,9 @@ export function ProductDetailPage() {
                                 {isCurrent && (
                                   <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700">Previewing</span>
                                 )}
+                                {isOutOfStock && (
+                                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">Out of stock</span>
+                                )}
                               </div>
                             </div>
 
@@ -471,10 +514,10 @@ export function ProductDetailPage() {
                             </div>
 
                             <div className="text-left md:text-right">
-                              <div className={`text-sm font-bold ${maxStock <= product.moq ? 'text-orange-600' : 'text-slate-800'}`}>
+                              <div className={`text-sm font-bold ${isOutOfStock ? 'text-slate-500' : maxStock <= product.moq ? 'text-orange-600' : 'text-slate-800'}`}>
                                 {maxStock > 9999 ? '9999+' : maxStock.toLocaleString()}
                               </div>
-                              <div className="text-[11px] font-medium text-slate-500">{maxStock <= product.moq ? 'Low stock' : 'Stock'}</div>
+                              <div className="text-[11px] font-medium text-slate-500">{isOutOfStock ? 'Unavailable' : maxStock <= product.moq ? 'Low stock' : 'Stock'}</div>
                             </div>
 
                             <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -484,7 +527,7 @@ export function ProductDetailPage() {
                                   event.stopPropagation();
                                   adjustVariantQuantity(variant, -1);
                                 }}
-                                disabled={rowQuantity <= 0}
+                                disabled={isOutOfStock || rowQuantity <= 0}
                                 className="h-10 w-10 border-r border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                               >
                                 -
@@ -494,9 +537,10 @@ export function ProductDetailPage() {
                                 value={rowQuantity}
                                 min={0}
                                 max={maxStock || undefined}
+                                disabled={isOutOfStock}
                                 onClick={(event) => event.stopPropagation()}
                                 onChange={(event) => updateVariantQuantity(variant, parseInt(event.target.value, 10) || 0)}
-                                className="h-10 min-w-0 flex-1 border-0 text-center text-sm font-bold text-slate-900 outline-none"
+                                className="h-10 min-w-0 flex-1 border-0 text-center text-sm font-bold text-slate-900 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                               />
                               <button
                                 type="button"
@@ -504,7 +548,7 @@ export function ProductDetailPage() {
                                   event.stopPropagation();
                                   adjustVariantQuantity(variant, 1);
                                 }}
-                                disabled={maxStock > 0 && rowQuantity >= maxStock}
+                                disabled={isOutOfStock || (maxStock > 0 && rowQuantity >= maxStock)}
                                 className="h-10 w-10 border-l border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                               >
                                 +
@@ -681,8 +725,8 @@ export function ProductDetailPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button onClick={() => void handleAddToList()} className="flex-1 py-4 bg-[#4F6BFF] text-white font-bold rounded-xl hover:bg-[#3D56E0] transition-colors">
-                  {isInList(product.id, selectedVariant?.id ?? null) ? t('marketplace.addedToList') : t('marketplace.addToList')}
+                <button disabled={!productCanBeAdded || (selectedVariant?.stock_quantity ?? 1) <= 0} onClick={() => void handleAddToList()} className="flex-1 py-4 bg-[#4F6BFF] text-white font-bold rounded-xl hover:bg-[#3D56E0] transition-colors disabled:cursor-not-allowed disabled:bg-slate-300">
+                  {!productCanBeAdded || (selectedVariant?.stock_quantity ?? 1) <= 0 ? 'Out of Stock' : isInList(product.id, selectedVariant?.id ?? null) ? t('marketplace.addedToList') : t('marketplace.addToList')}
                 </button>
                 <button onClick={handleQuote} className="px-6 py-4 border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:border-[#4F6BFF] hover:bg-[#EEF2FF] hover:text-[#4F6BFF] transition-colors">
                   {t('marketplace.quote')}

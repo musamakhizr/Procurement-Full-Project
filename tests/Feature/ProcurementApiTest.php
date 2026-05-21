@@ -51,6 +51,7 @@ class ProcurementApiTest extends TestCase
             'lead_time_max_days' => 4,
             'stock_quantity' => 100,
             'base_price' => 12.50,
+            'import_status' => 'completed',
         ]);
 
         $product->priceTiers()->createMany([
@@ -94,6 +95,7 @@ class ProcurementApiTest extends TestCase
             'lead_time_max_days' => 4,
             'stock_quantity' => 100,
             'base_price' => 69.90,
+            'import_status' => 'completed',
         ]);
 
         $variant = $product->variants()->create([
@@ -128,5 +130,113 @@ class ProcurementApiTest extends TestCase
             ->assertJsonPath('product_variant_id', $variant->id)
             ->assertJsonPath('variant_label', '冰雾粉-15升')
             ->assertJsonPath('unit_price', 69.9);
+    }
+
+    public function test_user_cannot_add_zero_stock_product_or_variant_to_procurement_list(): void
+    {
+        $user = User::factory()->create();
+        $category = Category::query()->create([
+            'name' => 'Bags',
+            'slug' => 'bags',
+            'sort_order' => 1,
+        ]);
+        $outOfStockProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'OOS-PRODUCT',
+            'name' => 'Out of Stock Product',
+            'description' => 'No stock.',
+            'moq' => 1,
+            'lead_time_min_days' => 2,
+            'lead_time_max_days' => 4,
+            'stock_quantity' => 0,
+            'base_price' => 10,
+            'import_status' => 'completed',
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'VARIANT-STOCK',
+            'name' => 'Variant Stock Product',
+            'description' => 'Has one empty variant.',
+            'moq' => 1,
+            'lead_time_min_days' => 2,
+            'lead_time_max_days' => 4,
+            'stock_quantity' => 100,
+            'base_price' => 10,
+            'import_status' => 'completed',
+        ]);
+        $outOfStockVariant = $product->variants()->create([
+            'source_sku_id' => 'EMPTY-001',
+            'label' => 'Empty',
+            'option_values' => [['key' => '0:0', 'group_name' => 'Color', 'value' => 'Empty']],
+            'price' => 10,
+            'stock_quantity' => 0,
+        ]);
+
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/procurement-list', [
+                'product_id' => $outOfStockProduct->id,
+                'quantity' => 1,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This product is out of stock.');
+
+        $this->withToken($token)
+            ->postJson('/api/procurement-list', [
+                'product_id' => $product->id,
+                'product_variant_id' => $outOfStockVariant->id,
+                'quantity' => 1,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This product variation is out of stock.');
+    }
+
+    public function test_variant_product_requires_available_variant_even_when_product_stock_is_zero(): void
+    {
+        $user = User::factory()->create();
+        $category = Category::query()->create([
+            'name' => 'Bags',
+            'slug' => 'bags',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'VARIANT-ONLY-STOCK',
+            'name' => 'Variant Only Stock Product',
+            'description' => 'Stock comes from variants.',
+            'moq' => 1,
+            'lead_time_min_days' => 2,
+            'lead_time_max_days' => 4,
+            'stock_quantity' => 0,
+            'base_price' => 10,
+            'import_status' => 'completed',
+        ]);
+        $availableVariant = $product->variants()->create([
+            'source_sku_id' => 'AVAILABLE-001',
+            'label' => 'Available',
+            'option_values' => [['key' => '0:1', 'group_name' => 'Color', 'value' => 'Available']],
+            'price' => 12,
+            'stock_quantity' => 5,
+        ]);
+
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/procurement-list', [
+                'product_id' => $product->id,
+                'quantity' => 1,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Please select an available product variation.');
+
+        $this->withToken($token)
+            ->postJson('/api/procurement-list', [
+                'product_id' => $product->id,
+                'product_variant_id' => $availableVariant->id,
+                'quantity' => 1,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('product_variant_id', $availableVariant->id);
     }
 }

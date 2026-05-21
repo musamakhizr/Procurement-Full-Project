@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/product-shop-imports', [AdminProductController::class, 'shopImports']);
         Route::get('/products', [AdminProductController::class, 'index']);
         Route::get('/products/from-link', [ProductFromLinkController::class, 'show']);
+        Route::get('/products/{product}', [AdminProductController::class, 'show']);
         Route::post('/products/import-spreadsheet', [AdminProductController::class, 'importSpreadsheet']);
         Route::post('/products/import-shop-spreadsheet', [AdminProductController::class, 'importShopSpreadsheet']);
         Route::post('/products', [AdminProductController::class, 'store']);

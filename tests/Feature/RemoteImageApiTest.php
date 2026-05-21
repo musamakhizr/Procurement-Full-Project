@@ -55,6 +55,7 @@ class RemoteImageApiTest extends TestCase
             'lead_time_max_days' => 7,
             'stock_quantity' => 50,
             'base_price' => 9.99,
+            'import_status' => 'completed',
         ]);
 
         $this->getJson("/api/products/{$product->id}")

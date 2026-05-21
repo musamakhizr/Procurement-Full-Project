@@ -40,6 +40,13 @@ class AdminProductController extends Controller
     {
         $products = Product::query()
             ->with(['category.parent', 'priceTiers', 'productImages'])
+            ->withCount([
+                'variants',
+                'variants as available_variants_count' => fn ($query) => $query->where('stock_quantity', '>', 0),
+            ])
+            ->withSum([
+                'variants as available_variants_stock_quantity' => fn ($query) => $query->where('stock_quantity', '>', 0),
+            ], 'stock_quantity')
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->string('search')->toString();
 
@@ -55,6 +62,13 @@ class AdminProductController extends Controller
             ->withQueryString();
 
         return ProductListResource::collection($products);
+    }
+
+    public function show(Product $product): ProductDetailResource
+    {
+        $product->load(['category.parent', 'priceTiers', 'productImages', 'variants']);
+
+        return new ProductDetailResource($product);
     }
 
     public function store(StoreProductRequest $request)
@@ -74,7 +88,7 @@ class AdminProductController extends Controller
                 'source_image_url' => data_get($importSource, 'image_url'),
                 'source_category_label' => data_get($importSource, 'classified_category'),
                 'cat_from_api' => null,
-                'import_status' => is_array($importSource) ? 'pending' : null,
+                'import_status' => is_array($importSource) ? 'pending' : 'completed',
                 'moq' => $request->integer('moq'),
                 'lead_time_min_days' => $request->integer('lead_time_min_days'),
                 'lead_time_max_days' => $request->integer('lead_time_max_days'),
