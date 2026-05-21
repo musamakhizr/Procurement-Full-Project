@@ -256,6 +256,8 @@ export interface AdminProductPayload {
   description: string;
   image_url?: string;
   import_source?: {
+    import_mode?: 'single_product';
+    source?: 'admin_add_product_modal';
     title?: string | null;
     platform: string;
     num_iid: string;

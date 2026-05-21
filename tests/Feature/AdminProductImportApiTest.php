@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Exceptions\TransientFogotApiException;
+use App\Jobs\ClassifyImportedProductCategory;
 use App\Jobs\ImportMarketplaceProductsFromShops;
 use App\Jobs\ImportMarketplaceProductsFromSpreadsheet;
 use App\Jobs\ProcessImportedProductDetailImage;
+use App\Jobs\ProcessImportedProductMainImage;
+use App\Jobs\ProcessImportedProductMedia;
 use App\Models\Category;
 use App\Models\MarketplaceShopImport;
 use App\Models\Product;
@@ -451,6 +454,52 @@ class AdminProductImportApiTest extends TestCase
         $this->assertStringContainsString('after 1 attempt(s)', $product->import_error);
     }
 
+    public function test_product_media_job_processes_one_product_serially_without_dispatching_image_jobs(): void
+    {
+        Queue::fake();
+
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'SERIAL-MEDIA-1',
+            'name' => 'Serial media product',
+            'description' => 'Serial media description',
+            'source_payload' => [
+                'platform' => 'taobao',
+                'num_iid' => '123456789',
+                'title' => 'Serial media product',
+                'images' => [
+                    'https://img.alicdn.com/imgextra/i1/test-gallery.jpg',
+                ],
+                'description_images' => [
+                    'https://img.alicdn.com/imgextra/i1/test-description.jpg',
+                ],
+            ],
+            'import_status' => 'pending',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+
+        $syncService = Mockery::mock(ImportedProductSyncService::class);
+        $syncService
+            ->shouldReceive('processSequentially')
+            ->once()
+            ->with(Mockery::on(fn (Product $handledProduct) => $handledProduct->is($product)), $product->source_payload);
+
+        (new ProcessImportedProductMedia($product->id))->handle($syncService);
+
+        Queue::assertNotPushed(ProcessImportedProductDetailImage::class);
+        Queue::assertNotPushed(ProcessImportedProductMainImage::class);
+        Queue::assertNotPushed(ClassifyImportedProductCategory::class);
+    }
+
     public function test_description_classifier_failure_continues_to_translate_image(): void
     {
         Config::set('services.fogot.retry_times', 0);
@@ -815,6 +864,72 @@ class AdminProductImportApiTest extends TestCase
         foreach ($product->productImages as $image) {
             Storage::disk('public')->assertExists($image->path);
         }
+    }
+
+    public function test_add_product_import_source_creates_only_single_product_and_never_fetches_shop_items(): void
+    {
+        Http::fake([
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys & Games',
+                        'L2_EN' => 'Educational / STEM Toys',
+                        'number' => 0,
+                        'item_name' => 'Single Taobao Product',
+                    ],
+                ],
+            ], 200),
+            'https://api-gw.onebound.cn/taobao/item_search_shop_pro/*' => Http::response([
+                'items' => [
+                    'item' => [
+                        ['detail_url' => 'https://item.taobao.com/item.htm?id=999'],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = Category::query()->create([
+            'name' => 'Imported Toys',
+            'slug' => 'imported-toys',
+            'sort_order' => 1,
+        ]);
+
+        $this->withToken($admin->createToken('test')->plainTextToken)
+            ->postJson('/api/admin/products', [
+                'category_id' => $category->id,
+                'sku' => 'TB-668816694920',
+                'name' => 'Single Taobao Product',
+                'description' => 'Created from Add Product modal.',
+                'moq' => 1,
+                'lead_time_min_days' => 3,
+                'lead_time_max_days' => 5,
+                'stock_quantity' => 100,
+                'is_verified' => true,
+                'is_customizable' => false,
+                'is_active' => true,
+                'base_price' => 298,
+                'price_tiers' => [
+                    ['min_quantity' => 1, 'max_quantity' => null, 'price' => 298],
+                ],
+                'import_source' => [
+                    'import_mode' => 'single_product',
+                    'source' => 'admin_add_product_modal',
+                    'platform' => 'taobao',
+                    'num_iid' => '668816694920',
+                    'detail_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+                    'description' => 'Created from Add Product modal.',
+                    'images' => [],
+                    'description_images' => [],
+                    'variants' => [],
+                ],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('sku', 'TB-668816694920');
+
+        $this->assertSame(1, Product::query()->count());
+        $this->assertDatabaseCount('marketplace_shop_imports', 0);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'item_search_shop_pro'));
     }
 
     public function test_import_processing_extracts_description_images_from_description_html(): void

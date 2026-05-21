@@ -3,9 +3,6 @@
 namespace App\Services;
 
 use App\Exceptions\TransientFogotApiException;
-use App\Jobs\ClassifyImportedProductCategory;
-use App\Jobs\ProcessImportedProductDetailImage;
-use App\Jobs\ProcessImportedProductMainImage;
 use App\Jobs\ProcessImportedProductMedia;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -72,50 +69,13 @@ class ImportedProductSyncService
 
     public function dispatchQueuedTasks(Product $product): void
     {
-        ['main_image_url' => $mainImageUrl, 'gallery_images' => $galleryImageUrls, 'variant_images' => $variantImageUrls, 'description_images' => $descriptionImageUrls, 'total_tasks' => $totalTasks] = $this->initializeProcessing($product);
+        $sourcePayload = $product->source_payload;
 
-        if ($totalTasks === 0) {
-            $product->forceFill([
-                'import_status' => 'completed',
-                'import_error' => null,
-            ])->save();
-
+        if (! is_array($sourcePayload) || $sourcePayload === []) {
             return;
         }
 
-        $jobs = [];
-        if ($this->shouldClassifyProductCategory($product)) {
-            $jobs[] = new ClassifyImportedProductCategory($product->getKey());
-        }
-
-        foreach ($descriptionImageUrls as $index => $imageUrl) {
-            $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'description', $index, 'translate');
-        }
-
-        foreach ($variantImageUrls as $index => $imageUrl) {
-            $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'variant', $index, 'translate');
-        }
-
-        if ($mainImageUrl !== null) {
-            $jobs[] = new ProcessImportedProductMainImage($product->getKey(), $mainImageUrl);
-        }
-
-        foreach ($galleryImageUrls as $index => $imageUrl) {
-            $jobs[] = new ProcessImportedProductDetailImage($product->getKey(), $imageUrl, 'gallery', $index + 1, 'redraw');
-        }
-
-        if ($jobs === []) {
-            $product->forceFill([
-                'import_status' => 'completed',
-                'import_error' => null,
-            ])->save();
-
-            return;
-        }
-
-        foreach ($jobs as $job) {
-            dispatch($job);
-        }
+        $this->processSequentially($product, $sourcePayload);
     }
 
     public function process(Product $product): void
