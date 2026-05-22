@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Exceptions\TransientFogotApiException;
+use App\Support\RemoteImage;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -121,12 +124,7 @@ class FogotProductMediaService
      */
     private function processMainImage(string $imageUrl): ?array
     {
-        $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
-
-        $json = $this->postJson('/image/redraw', [
-            'image_url' => $imageUrl,
-            'mime_type' => $mimeType,
-        ]);
+        $json = $this->postJson('/image/redraw', $this->imageRequestPayload($imageUrl));
 
         $image = $this->extractFirstImagePayload($json, $imageUrl);
 
@@ -146,11 +144,7 @@ class FogotProductMediaService
                 continue;
             }
 
-            $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
-            $json = $this->postJson('/detail/image/translate', [
-                'image_url' => $imageUrl,
-                'mime_type' => $mimeType,
-            ]);
+            $json = $this->postJson('/detail/image/translate', $this->imageRequestPayload($imageUrl));
 
             foreach ($this->extractImagePayloads($json) as $image) {
                 $processedImages[] = $this->formatImagePayload($imageUrl, $image['mime_type'], $image['data']);
@@ -162,12 +156,7 @@ class FogotProductMediaService
 
     private function classifyDetailImageCategory(string $imageUrl): ?string
     {
-        $mimeType = $this->guessMimeTypeFromUrl($imageUrl);
-
-        $json = $this->postJson('/detail/image/classify', [
-            'image_url' => $imageUrl,
-            'mime_type' => $mimeType,
-        ]);
+        $json = $this->postJson('/detail/image/classify', $this->imageRequestPayload($imageUrl));
 
         $category = data_get($json, 'category')
             ?? data_get($json, 'body.category')
@@ -241,6 +230,8 @@ class FogotProductMediaService
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
+                $this->throttleFogotImageRequest($path);
+
                 $response = Http::acceptJson()
                     ->timeout($timeout)
                     ->connectTimeout($connectTimeout)
@@ -291,6 +282,157 @@ class FogotProductMediaService
         }
 
         return $json;
+    }
+
+    /**
+     * @return array{image_url:string,mime_type:string,image_base64?:string}
+     */
+    private function imageRequestPayload(string $imageUrl): array
+    {
+        $payload = [
+            'image_url' => $imageUrl,
+            'mime_type' => $this->guessMimeTypeFromUrl($imageUrl),
+        ];
+
+        if (! (bool) config('services.fogot.remote_image_cache_enabled', true)) {
+            return $payload;
+        }
+
+        if (! (bool) config('services.fogot.send_image_base64', true)) {
+            return $payload;
+        }
+
+        $cachedImage = $this->cachedRemoteImage($imageUrl);
+
+        if ($cachedImage === null) {
+            return $payload;
+        }
+
+        return [
+            ...$payload,
+            'mime_type' => $cachedImage['mime_type'],
+            'image_base64' => base64_encode($cachedImage['binary']),
+        ];
+    }
+
+    /**
+     * @return array{binary:string,mime_type:string}|null
+     */
+    private function cachedRemoteImage(string $imageUrl): ?array
+    {
+        if (! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        $cacheKey = sha1($imageUrl);
+        $directory = trim((string) config('services.fogot.remote_image_cache_directory', 'fogot-image-cache'), '/');
+        $metaPath = "{$directory}/{$cacheKey}.json";
+
+        if (Storage::disk('local')->exists($metaPath)) {
+            $metadata = json_decode((string) Storage::disk('local')->get($metaPath), true);
+            $path = is_array($metadata) ? ($metadata['path'] ?? null) : null;
+            $mimeType = is_array($metadata) ? ($metadata['mime_type'] ?? null) : null;
+
+            if (is_string($path) && is_string($mimeType) && Storage::disk('local')->exists($path)) {
+                return [
+                    'binary' => (string) Storage::disk('local')->get($path),
+                    'mime_type' => $mimeType,
+                ];
+            }
+        }
+
+        $this->throttleRemoteImageDownload();
+
+        try {
+            $response = Http::withHeaders(RemoteImage::requestHeaders($imageUrl))
+                ->timeout(60)
+                ->connectTimeout(20)
+                ->retry(1, 1500)
+                ->get($imageUrl);
+        } catch (Throwable $exception) {
+            Log::warning('Unable to pre-cache marketplace image before Fogot request.', [
+                'image_url' => $imageUrl,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if ($response->failed()) {
+            Log::warning('Marketplace image pre-cache returned a failed response.', [
+                'image_url' => $imageUrl,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $mimeType = strtolower(trim((string) $response->header('Content-Type', '')));
+
+        if (! str_starts_with($mimeType, 'image/')) {
+            return null;
+        }
+
+        $binary = $response->body();
+        $extension = $this->extensionFromMimeType($mimeType);
+        $imagePath = "{$directory}/{$cacheKey}.{$extension}";
+
+        Storage::disk('local')->put($imagePath, $binary);
+        Storage::disk('local')->put($metaPath, json_encode([
+            'source_url' => $imageUrl,
+            'path' => $imagePath,
+            'mime_type' => $mimeType,
+            'cached_at' => now()->toIso8601String(),
+        ]));
+
+        return [
+            'binary' => $binary,
+            'mime_type' => $mimeType,
+        ];
+    }
+
+    private function throttleFogotImageRequest(string $path): void
+    {
+        if (! in_array($path, ['/image/redraw', '/detail/image/translate', '/detail/image/classify'], true)) {
+            return;
+        }
+
+        $this->throttle('fogot:image-request:last-at', 'fogot:image-request:lock', (int) config('services.fogot.image_request_delay_ms', 0));
+    }
+
+    private function throttleRemoteImageDownload(): void
+    {
+        $this->throttle('fogot:remote-image-download:last-at', 'fogot:remote-image-download:lock', (int) config('services.fogot.remote_image_download_delay_ms', 0));
+    }
+
+    private function throttle(string $timestampKey, string $lockKey, int $delayMs): void
+    {
+        if ($delayMs <= 0 || app()->runningUnitTests()) {
+            return;
+        }
+
+        Cache::lock($lockKey, 30)->block(30, function () use ($timestampKey, $delayMs) {
+            $lastAt = (float) Cache::get($timestampKey, 0);
+            $elapsedMs = $lastAt > 0 ? (int) ((microtime(true) - $lastAt) * 1000) : $delayMs;
+            $remainingMs = $delayMs - $elapsedMs;
+
+            if ($remainingMs > 0) {
+                usleep($remainingMs * 1000);
+            }
+
+            Cache::put($timestampKey, microtime(true), now()->addMinutes(10));
+        });
+    }
+
+    private function extensionFromMimeType(string $mimeType): string
+    {
+        return match (strtolower(trim(explode(';', $mimeType)[0]))) {
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'image/svg+xml' => 'svg',
+            default => 'jpg',
+        };
     }
 
     /**

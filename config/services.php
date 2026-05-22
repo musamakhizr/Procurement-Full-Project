@@ -45,6 +45,11 @@ return [
             'intval',
             explode(',', env('FOGOT_API_RETRY_STATUSES', '420,429,500,502,503,504')),
         ))),
+        'image_request_delay_ms' => (int) env('FOGOT_IMAGE_REQUEST_DELAY_MS', 3000),
+        'remote_image_download_delay_ms' => (int) env('FOGOT_REMOTE_IMAGE_DOWNLOAD_DELAY_MS', 2000),
+        'remote_image_cache_enabled' => filter_var(env('FOGOT_REMOTE_IMAGE_CACHE_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'send_image_base64' => filter_var(env('FOGOT_SEND_IMAGE_BASE64', true), FILTER_VALIDATE_BOOL),
+        'remote_image_cache_directory' => env('FOGOT_REMOTE_IMAGE_CACHE_DIRECTORY', 'fogot-image-cache'),
         'category_dict_text' => env('FOGOT_CATEGORY_DICT_TEXT', ''),
     ],
 

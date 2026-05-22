@@ -761,6 +761,49 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame(base64_encode('translated-image'), $images[0]['data']);
     }
 
+    public function test_fogot_image_processing_can_cache_remote_image_and_send_base64_payload(): void
+    {
+        Config::set('services.fogot.remote_image_cache_enabled', true);
+        Config::set('services.fogot.send_image_base64', true);
+        Config::set('services.fogot.image_request_delay_ms', 0);
+        Config::set('services.fogot.remote_image_download_delay_ms', 0);
+        Storage::fake('local');
+
+        $sourceImageCalls = 0;
+        $fogotCalls = 0;
+
+        Http::fake([
+            'https://cbu01.alicdn.com/img/ibank/cache-me.jpg' => function () use (&$sourceImageCalls) {
+                $sourceImageCalls++;
+
+                return Http::response('source-image-binary', 200, [
+                    'Content-Type' => 'image/jpeg',
+                ]);
+            },
+            'https://py.fogot.cn/api/product/detail/image/translate' => function ($request) use (&$fogotCalls) {
+                $fogotCalls++;
+                $this->assertSame(base64_encode('source-image-binary'), $request['image_base64']);
+                $this->assertSame('image/jpeg', $request['mime_type']);
+
+                return Http::response([
+                    'images' => [
+                        [
+                            'mime_type' => 'image/jpeg',
+                            'data' => base64_encode("translated-image-{$fogotCalls}"),
+                        ],
+                    ],
+                ]);
+            },
+        ]);
+
+        $service = app(FogotProductMediaService::class);
+        $service->translateImage('https://cbu01.alicdn.com/img/ibank/cache-me.jpg');
+        $service->translateImage('https://cbu01.alicdn.com/img/ibank/cache-me.jpg');
+
+        $this->assertSame(1, $sourceImageCalls);
+        $this->assertSame(2, $fogotCalls);
+    }
+
     public function test_queued_image_job_retries_transient_fogot_failures_before_writing_import_error(): void
     {
         Config::set('services.fogot.retry_times', 0);
