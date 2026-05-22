@@ -173,6 +173,68 @@ class AdminProductImportApiTest extends TestCase
             && (int) $request['page'] === 1);
     }
 
+    public function test_shop_product_fetch_service_uses_1688_seller_nick_sid_for_shop_products(): void
+    {
+        Http::fake([
+            'https://api-gw.onebound.cn/1688/item_get/*' => Http::response([
+                'item' => [
+                    'num_iid' => '570232053443',
+                    'title' => 'Seed 1688 product',
+                    'price' => '49.00',
+                    'detail_url' => 'https://detail.1688.com/offer/570232053443.html',
+                    'pic_url' => 'https://cbu01.alicdn.com/img/ibank/seed.jpg',
+                    'seller_id' => 3070197752,
+                    'shop_id' => 3070197752,
+                    'seller_info' => [
+                        'sid' => 'b2b-30701977528b4a7',
+                        'user_num_id' => 3070197752,
+                    ],
+                ],
+                'error_code' => '0000',
+            ]),
+            'https://api-gw.onebound.cn/1688/item_search_shop/*' => Http::response([
+                'items' => [
+                    'page' => '1',
+                    'page_count' => 1,
+                    'item' => [
+                        [
+                            'num_iid' => '777193620287',
+                            'detail_url' => 'https://detail.1688.com/offer/777193620287.html?',
+                        ],
+                        [
+                            'num_iid' => '778024852442',
+                            'detail_url' => '',
+                        ],
+                    ],
+                ],
+                'error_code' => '0000',
+            ]),
+        ]);
+
+        $service = app(MarketplaceShopProductFetchService::class);
+        $shopIdentity = $service->resolveShopFromSeedProductUrl('https://detail.1688.com/offer/570232053443.html');
+        $links = $service->fetchProductLinksForShop(
+            $shopIdentity['shop_id'],
+            $shopIdentity['seller_id'],
+            $shopIdentity['seed_platform'],
+            $shopIdentity['seller_nick'],
+        );
+
+        $this->assertSame('1688', $shopIdentity['seed_platform']);
+        $this->assertSame('3070197752', $shopIdentity['shop_id']);
+        $this->assertSame('3070197752', $shopIdentity['seller_id']);
+        $this->assertSame('b2b-30701977528b4a7', $shopIdentity['seller_nick']);
+        $this->assertSame([
+            'https://detail.1688.com/offer/777193620287.html?',
+            'https://detail.1688.com/offer/778024852442.html',
+        ], $links);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '1688/item_search_shop')
+            && $request['seller_nick'] === 'b2b-30701977528b4a7'
+            && (int) $request['page'] === 1);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'taobao/item_search_shop_pro'));
+    }
+
     public function test_marketplace_product_fetch_service_detects_supported_product_url_ids(): void
     {
         $service = app(MarketplaceProductFetchService::class);
@@ -213,7 +275,7 @@ class AdminProductImportApiTest extends TestCase
         $shopProductFetchService
             ->shouldReceive('fetchProductLinksForShop')
             ->once()
-            ->with('34970285', '16134769')
+            ->with('34970285', '16134769', 'taobao', null)
             ->andReturn([
                 'https://item.taobao.com/item.htm?id=668816694920',
                 'https://item.taobao.com/item.htm?id=953121592758',
@@ -226,6 +288,7 @@ class AdminProductImportApiTest extends TestCase
             ->andReturn([
                 'shop_id' => '247748197',
                 'seller_id' => '3244367701',
+                'seller_nick' => 'b2b-3244367701',
                 'seed_platform' => '1688',
                 'seed_num_iid' => '935069584004',
                 'seed_product_url' => 'https://detail.1688.com/offer/935069584004.html',
@@ -234,9 +297,9 @@ class AdminProductImportApiTest extends TestCase
         $shopProductFetchService
             ->shouldReceive('fetchProductLinksForShop')
             ->once()
-            ->with('247748197', '3244367701')
+            ->with('247748197', '3244367701', '1688', 'b2b-3244367701')
             ->andReturn([
-                'https://item.taobao.com/item.htm?id=733669788190',
+                'https://detail.1688.com/offer/733669788190.html',
             ]);
 
         $productImportService
@@ -246,7 +309,7 @@ class AdminProductImportApiTest extends TestCase
                 'https://item.taobao.com/item.htm?id=668816694920',
                 'https://item.taobao.com/item.htm?id=953121592758',
                 'https://detail.1688.com/offer/935069584004.html',
-                'https://item.taobao.com/item.htm?id=733669788190',
+                'https://detail.1688.com/offer/733669788190.html',
             ]);
 
         $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
@@ -261,6 +324,35 @@ class AdminProductImportApiTest extends TestCase
         $shopImport = MarketplaceShopImport::query()->create([
             'seed_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
             'status' => 'queued',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $seedProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-SHOP-1',
+            'name' => 'Tracked shop seed',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-SHOP-2',
+            'name' => 'Tracked shop product',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
         ]);
         $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
         $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
@@ -280,7 +372,7 @@ class AdminProductImportApiTest extends TestCase
         $shopProductFetchService
             ->shouldReceive('fetchProductLinksForShop')
             ->once()
-            ->with('34970285', '16134769')
+            ->with('34970285', '16134769', 'taobao', null)
             ->andReturn([
                 'https://item.taobao.com/item.htm?id=953121592758',
             ]);
@@ -290,7 +382,11 @@ class AdminProductImportApiTest extends TestCase
             ->with([
                 'https://item.taobao.com/item.htm?id=668816694920',
                 'https://item.taobao.com/item.htm?id=953121592758',
-            ]);
+            ], Mockery::type('callable'))
+            ->andReturnUsing(function (array $links, callable $afterProductProcessed) use ($seedProduct, $shopProduct) {
+                $afterProductProcessed($links[0], $seedProduct);
+                $afterProductProcessed($links[1], $shopProduct);
+            });
 
         $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
         $service->importTrackedShopUrlsSequentially([$shopImport->id]);
@@ -300,12 +396,247 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame('taobao', $shopImport->seed_platform);
         $this->assertSame('668816694920', $shopImport->seed_num_iid);
         $this->assertSame('16134769', $shopImport->seller_id);
+        $this->assertNull($shopImport->seller_nick);
         $this->assertSame('34970285', $shopImport->shop_id);
         $this->assertSame(2, $shopImport->total_product_links);
         $this->assertSame(2, $shopImport->imported_product_links);
         $this->assertSame(['title' => 'Seed item'], $shopImport->raw_seed_payload);
         $this->assertNotNull($shopImport->started_at);
         $this->assertNotNull($shopImport->completed_at);
+    }
+
+    public function test_tracked_1688_shop_import_stores_seller_nick_sid(): void
+    {
+        $shopImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.1688.com/offer/570232053443.html',
+            'status' => 'queued',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $seedProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-1688-SHOP-1',
+            'name' => 'Tracked 1688 shop seed',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-1688-SHOP-2',
+            'name' => 'Tracked 1688 shop product',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->with('https://detail.1688.com/offer/570232053443.html')
+            ->andReturn([
+                'shop_id' => '3070197752',
+                'seller_id' => '3070197752',
+                'seller_nick' => 'b2b-30701977528b4a7',
+                'seed_platform' => '1688',
+                'seed_num_iid' => '570232053443',
+                'seed_product_url' => 'https://detail.1688.com/offer/570232053443.html',
+                'raw' => ['seller_info' => ['sid' => 'b2b-30701977528b4a7']],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('3070197752', '3070197752', '1688', 'b2b-30701977528b4a7')
+            ->andReturn([
+                'https://detail.1688.com/offer/777193620287.html',
+            ]);
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://detail.1688.com/offer/570232053443.html',
+                'https://detail.1688.com/offer/777193620287.html',
+            ], Mockery::type('callable'))
+            ->andReturnUsing(function (array $links, callable $afterProductProcessed) use ($seedProduct, $shopProduct) {
+                $afterProductProcessed($links[0], $seedProduct);
+                $afterProductProcessed($links[1], $shopProduct);
+            });
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importTrackedShopUrlsSequentially([$shopImport->id]);
+
+        $shopImport->refresh();
+        $this->assertSame('completed', $shopImport->status);
+        $this->assertSame('1688', $shopImport->seed_platform);
+        $this->assertSame('3070197752', $shopImport->seller_id);
+        $this->assertSame('b2b-30701977528b4a7', $shopImport->seller_nick);
+        $this->assertSame('3070197752', $shopImport->shop_id);
+        $this->assertDatabaseHas('marketplace_shop_imports', [
+            'id' => $shopImport->id,
+            'seller_nick' => 'b2b-30701977528b4a7',
+        ]);
+    }
+
+    public function test_tracked_shop_import_progress_updates_after_each_processed_product(): void
+    {
+        $shopImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+            'status' => 'queued',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $firstProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'SHOP-PROGRESS-1',
+            'name' => 'Shop progress one',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $secondProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'SHOP-PROGRESS-2',
+            'name' => 'Shop progress two',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->andReturn([
+                'shop_id' => '34970285',
+                'seller_id' => '16134769',
+                'seed_platform' => 'taobao',
+                'seed_num_iid' => '668816694920',
+                'seed_product_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+                'raw' => [],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('34970285', '16134769', 'taobao', null)
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ]);
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://item.taobao.com/item.htm?id=668816694920',
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ], Mockery::type('callable'))
+            ->andReturnUsing(function (array $links, callable $afterProductProcessed) use ($shopImport, $firstProduct, $secondProduct) {
+                $afterProductProcessed($links[0], $firstProduct);
+
+                $shopImport->refresh();
+                $this->assertSame('importing_products', $shopImport->status);
+                $this->assertSame(1, $shopImport->imported_product_links);
+                $this->assertSame(2, $shopImport->total_product_links);
+                $this->assertSame($firstProduct->id, $shopImport->metadata['last_processed_product_id']);
+
+                $afterProductProcessed($links[1], $secondProduct);
+            });
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importTrackedShopUrlsSequentially([$shopImport->id]);
+
+        $shopImport->refresh();
+        $this->assertSame('completed', $shopImport->status);
+        $this->assertSame(2, $shopImport->imported_product_links);
+        $this->assertSame($secondProduct->id, $shopImport->metadata['last_processed_product_id']);
+    }
+
+    public function test_tracked_shop_import_does_not_force_progress_to_total_when_one_product_fails(): void
+    {
+        $shopImport = MarketplaceShopImport::query()->create([
+            'seed_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+            'status' => 'queued',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $processedProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'SHOP-PARTIAL-1',
+            'name' => 'Shop partial one',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
+        $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
+
+        $shopProductFetchService
+            ->shouldReceive('resolveShopFromSeedProductUrl')
+            ->once()
+            ->andReturn([
+                'shop_id' => '34970285',
+                'seller_id' => '16134769',
+                'seed_platform' => 'taobao',
+                'seed_num_iid' => '668816694920',
+                'seed_product_url' => 'https://detail.tmall.com/item.htm?id=668816694920',
+                'raw' => [],
+            ]);
+        $shopProductFetchService
+            ->shouldReceive('fetchProductLinksForShop')
+            ->once()
+            ->with('34970285', '16134769', 'taobao', null)
+            ->andReturn([
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ]);
+        $productImportService
+            ->shouldReceive('importLinksSequentially')
+            ->once()
+            ->with([
+                'https://item.taobao.com/item.htm?id=668816694920',
+                'https://item.taobao.com/item.htm?id=953121592758',
+            ], Mockery::type('callable'))
+            ->andReturnUsing(function (array $links, callable $afterProductProcessed) use ($processedProduct) {
+                $afterProductProcessed($links[0], $processedProduct);
+            });
+
+        $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
+        $service->importTrackedShopUrlsSequentially([$shopImport->id]);
+
+        $shopImport->refresh();
+        $this->assertSame('failed', $shopImport->status);
+        $this->assertSame(1, $shopImport->imported_product_links);
+        $this->assertSame(2, $shopImport->total_product_links);
+        $this->assertSame('Only 1 of 2 product links were processed.', $shopImport->error);
     }
 
     public function test_tracked_shop_import_continues_when_one_seed_fails(): void
@@ -317,6 +648,35 @@ class AdminProductImportApiTest extends TestCase
         $successfulImport = MarketplaceShopImport::query()->create([
             'seed_url' => 'https://detail.tmall.com/item.htm?id=222',
             'status' => 'queued',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $seedProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-SHOP-CONTINUE-1',
+            'name' => 'Tracked shop continue seed',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
+        ]);
+        $shopProduct = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'TRACKED-SHOP-CONTINUE-2',
+            'name' => 'Tracked shop continue product',
+            'description' => 'Processed.',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+            'import_status' => 'completed',
         ]);
         $shopProductFetchService = Mockery::mock(MarketplaceShopProductFetchService::class);
         $productImportService = Mockery::mock(BulkMarketplaceProductImportService::class);
@@ -341,7 +701,7 @@ class AdminProductImportApiTest extends TestCase
         $shopProductFetchService
             ->shouldReceive('fetchProductLinksForShop')
             ->once()
-            ->with('shop-222', 'seller-222')
+            ->with('shop-222', 'seller-222', 'taobao', null)
             ->andReturn([
                 'https://item.taobao.com/item.htm?id=333',
             ]);
@@ -351,7 +711,11 @@ class AdminProductImportApiTest extends TestCase
             ->with([
                 'https://item.taobao.com/item.htm?id=222',
                 'https://item.taobao.com/item.htm?id=333',
-            ]);
+            ], Mockery::type('callable'))
+            ->andReturnUsing(function (array $links, callable $afterProductProcessed) use ($seedProduct, $shopProduct) {
+                $afterProductProcessed($links[0], $seedProduct);
+                $afterProductProcessed($links[1], $shopProduct);
+            });
 
         $service = new BulkMarketplaceShopImportService($shopProductFetchService, $productImportService);
         $service->importTrackedShopUrlsSequentially([$failedImport->id, $successfulImport->id]);
@@ -454,6 +818,43 @@ class AdminProductImportApiTest extends TestCase
         $this->assertStringContainsString('after 1 attempt(s)', $product->import_error);
     }
 
+    public function test_import_progress_counts_each_media_task_only_once(): void
+    {
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'DUPLICATE-PROGRESS-1',
+            'name' => 'Duplicate progress product',
+            'description' => 'Duplicate progress description',
+            'source_payload' => [],
+            'import_api_debug' => ['completed_task_keys' => []],
+            'import_status' => 'processing',
+            'import_error' => null,
+            'import_total_tasks' => 1,
+            'import_completed_tasks' => 0,
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+        $service = app(ImportedProductSyncService::class);
+        $imageUrl = 'https://img.alicdn.com/imgextra/i1/duplicate-task.jpg';
+
+        $service->recordDetailImageFailure($product, $imageUrl, 'gallery', 1, 'redraw', new \RuntimeException('temporary failure'));
+        $service->recordDetailImageFailure($product->fresh(), $imageUrl, 'gallery', 1, 'redraw', new \RuntimeException('temporary failure replay'));
+
+        $product->refresh();
+        $this->assertSame(1, $product->import_completed_tasks);
+        $this->assertSame(1, $product->import_total_tasks);
+        $this->assertSame('failed', $product->import_status);
+        $this->assertCount(1, $product->import_api_debug['completed_task_keys']);
+    }
+
     public function test_product_media_job_processes_one_product_serially_without_dispatching_image_jobs(): void
     {
         Queue::fake();
@@ -533,7 +934,7 @@ class AdminProductImportApiTest extends TestCase
             'source_payload' => [],
             'import_status' => 'processing',
             'import_error' => null,
-            'import_total_tasks' => 1,
+            'import_total_tasks' => 2,
             'import_completed_tasks' => 0,
             'moq' => 1,
             'lead_time_min_days' => 3,
@@ -552,10 +953,105 @@ class AdminProductImportApiTest extends TestCase
         );
 
         $product->refresh();
-        $this->assertSame(1, $product->import_completed_tasks);
-        $this->assertNull($product->import_error);
+        $this->assertSame(2, $product->import_completed_tasks);
+        $this->assertStringContainsString('Description image classification failed', $product->import_error);
         $this->assertSame('classifier_unavailable', data_get($product->import_api_debug, 'classify_description_results.0.status'));
         $this->assertSame('processed', data_get($product->import_api_debug, 'translate_description_results.0.status'));
+    }
+
+    public function test_serial_product_processing_counts_each_api_step_before_completion(): void
+    {
+        Config::set('services.fogot.retry_times', 0);
+        Config::set('services.fogot.retry_sleep_ms', 0);
+        Storage::fake('public');
+
+        Http::fake([
+            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+                'items' => [
+                    [
+                        'L1_EN' => 'Toys',
+                        'L1_ZH' => '玩具',
+                    ],
+                ],
+            ]),
+            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+                'category' => 'ä»‹ç»å•†å“',
+            ]),
+            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode('translated-image'),
+                    ],
+                ],
+            ]),
+            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+                'images' => [
+                    [
+                        'mime_type' => 'image/png',
+                        'data' => base64_encode('redrawn-image'),
+                    ],
+                ],
+            ]),
+        ]);
+
+        $category = Category::query()->create([
+            'name' => 'Imported Products',
+            'slug' => 'imported-products',
+            'sort_order' => 1,
+        ]);
+        $product = Product::query()->create([
+            'category_id' => $category->id,
+            'sku' => 'FULL-API-PROGRESS-1',
+            'name' => 'Full API progress product',
+            'description' => 'Full API progress description',
+            'moq' => 1,
+            'lead_time_min_days' => 3,
+            'lead_time_max_days' => 5,
+            'stock_quantity' => 10,
+            'base_price' => 1,
+        ]);
+        $source = [
+            'platform' => 'taobao',
+            'num_iid' => '123456789',
+            'title' => 'Full API progress product',
+            'description' => 'Full API progress description',
+            'detail_url' => 'https://item.taobao.com/item.htm?id=123456789',
+            'image_url' => 'https://img.alicdn.com/main.jpg',
+            'main_image_url' => 'https://img.alicdn.com/main.jpg',
+            'images' => [
+                'https://img.alicdn.com/main.jpg',
+                'https://img.alicdn.com/gallery.jpg',
+            ],
+            'description_images' => [
+                'https://img.alicdn.com/description.jpg',
+            ],
+            'variants' => [
+                [
+                    'sku_id' => 'sku-1',
+                    'label' => 'Blue',
+                    'option_values' => [
+                        ['key' => '0:1', 'group_name' => 'Color', 'value' => 'Blue'],
+                    ],
+                    'image_url' => 'https://img.alicdn.com/variant.jpg',
+                    'price' => 1,
+                    'stock_quantity' => 10,
+                ],
+            ],
+        ];
+
+        app(ImportedProductSyncService::class)->processSequentially($product, $source);
+
+        $product->refresh();
+        $this->assertSame(6, $product->import_total_tasks);
+        $this->assertSame(6, $product->import_completed_tasks);
+        $this->assertSame('completed', $product->import_status);
+        $this->assertCount(6, $product->import_api_debug['completed_task_keys']);
+        $this->assertSame('approved', data_get($product->import_api_debug, 'classify_description_results.0.status'));
+        $this->assertSame('processed', data_get($product->import_api_debug, 'translate_description_results.0.status'));
+        $this->assertSame('processed', data_get($product->import_api_debug, 'translate_variant_results.0.status'));
+        $this->assertSame('processed', data_get($product->import_api_debug, 'redraw_gallery_results.0.status'));
+        Http::assertSentCount(6);
     }
 
     public function test_imported_product_uses_source_images_until_media_fully_completes(): void

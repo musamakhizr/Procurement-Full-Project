@@ -13,6 +13,7 @@ class MarketplaceShopImport extends Model
         'seed_platform',
         'seed_num_iid',
         'seller_id',
+        'seller_nick',
         'shop_id',
         'status',
         'total_product_links',

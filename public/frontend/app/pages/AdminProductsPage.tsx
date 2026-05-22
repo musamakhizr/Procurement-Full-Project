@@ -252,8 +252,10 @@ export function AdminProductsPage() {
       return <span className="text-xs font-semibold text-slate-400">Manual</span>;
     }
 
-    const completed = product.import_completed_tasks ?? 0;
     const total = product.import_total_tasks ?? 0;
+    const completed = total > 0
+      ? Math.min(product.import_completed_tasks ?? 0, total)
+      : product.import_completed_tasks ?? 0;
     const progress = total > 0 ? `${completed}/${total}` : product.import_status;
     const tone = product.import_status === 'completed' && !product.import_error
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'

@@ -541,6 +541,7 @@ export interface MarketplaceShopImport {
   seed_platform: string | null;
   seed_num_iid: string | null;
   seller_id: string | null;
+  seller_nick: string | null;
   shop_id: string | null;
   status: string;
   total_product_links: number;
@@ -550,6 +551,10 @@ export interface MarketplaceShopImport {
     current_stage?: string | null;
     failed_stage?: string | null;
     exception_class?: string | null;
+    last_processed_product_link?: string | null;
+    last_processed_product_id?: number | null;
+    processed_product_links?: string[];
+    processed_product_ids?: number[];
   } | null;
   created_at: string;
   started_at: string | null;

@@ -12,21 +12,39 @@ export function AdminShopImportsPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const loadShopImports = async (page = pagination.current_page) => {
-    setIsLoading(true);
+  const loadShopImports = async (page = pagination.current_page, showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
 
     try {
       const response = await fetchAdminShopImports(page, 10);
       setShopImports(response.data);
       setPagination(response.meta);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     void loadShopImports(1);
   }, []);
+
+  useEffect(() => {
+    const hasActiveImport = shopImports.some((shopImport) => !['completed', 'failed'].includes(shopImport.status));
+
+    if (!hasActiveImport) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadShopImports(pagination.current_page, false);
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [pagination.current_page, shopImports]);
 
   const pageNumbers = useMemo(() => {
     return Array.from({ length: pagination.last_page }, (_, index) => index + 1);
@@ -66,7 +84,14 @@ export function AdminShopImportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {shopImports.map((shopImport) => (
+                {shopImports.map((shopImport) => {
+                  const totalProducts = shopImport.total_product_links;
+                  const importedProducts = totalProducts > 0
+                    ? Math.min(shopImport.imported_product_links, totalProducts)
+                    : shopImport.imported_product_links;
+                  const progressPercent = totalProducts > 0 ? Math.round((importedProducts / totalProducts) * 100) : 0;
+
+                  return (
                   <tr key={shopImport.id} className="hover:bg-slate-50">
                     <td className="max-w-md px-6 py-4">
                       <p className="truncate text-sm font-semibold text-slate-900" title={shopImport.seed_url}>{shopImport.seed_url}</p>
@@ -74,6 +99,7 @@ export function AdminShopImportsPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">
                       <p>Seller: {shopImport.seller_id ?? '-'}</p>
+                      <p>SID: {shopImport.seller_nick ?? '-'}</p>
                       <p>Shop: {shopImport.shop_id ?? '-'}</p>
                     </td>
                     <td className="px-6 py-4">
@@ -91,7 +117,18 @@ export function AdminShopImportsPage() {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-slate-700">
-                      {shopImport.imported_product_links}/{shopImport.total_product_links}
+                      <div className="min-w-32">
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <span>{importedProducts}/{totalProducts}</span>
+                          {totalProducts > 0 && <span className="text-xs text-slate-500">{progressPercent}%</span>}
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-[#4F6BFF] transition-all" style={{ width: `${progressPercent}%` }} />
+                        </div>
+                        {shopImport.metadata?.last_processed_product_id && (
+                          <p className="mt-1 text-xs text-slate-500">Last product #{shopImport.metadata.last_processed_product_id}</p>
+                        )}
+                      </div>
                     </td>
                     <td className="max-w-sm px-6 py-4">
                       {shopImport.error ? (
@@ -101,7 +138,8 @@ export function AdminShopImportsPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {shopImports.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">

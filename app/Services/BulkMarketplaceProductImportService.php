@@ -22,10 +22,8 @@ class BulkMarketplaceProductImportService
      *
      * @param array<int,string> $links
      */
-    public function importLinksSequentially(array $links): void
+    public function importLinksSequentially(array $links, ?callable $afterProductProcessed = null): void
     {
-        $productsToProcess = [];
-
         foreach ($links as $link) {
             try {
                 $result = $this->marketplaceProductFetchService->fetch($link);
@@ -33,26 +31,17 @@ class BulkMarketplaceProductImportService
                 $product = $this->upsertProduct($source);
 
                 $this->importedProductSyncService->preparePending($product, $source);
-                $productsToProcess[] = [
-                    'product_id' => $product->getKey(),
-                    'source' => $source,
-                ];
+                $this->importedProductSyncService->processSequentially($product, $source);
+
+                if ($afterProductProcessed !== null) {
+                    $afterProductProcessed($link, $product->fresh() ?? $product);
+                }
             } catch (Throwable $exception) {
                 Log::warning('Bulk marketplace product import failed for one link.', [
                     'link' => $link,
                     'error' => $exception->getMessage(),
                 ]);
             }
-        }
-
-        foreach ($productsToProcess as $productToProcess) {
-            $product = Product::query()->find($productToProcess['product_id']);
-
-            if (! $product) {
-                continue;
-            }
-
-            $this->importedProductSyncService->processSequentially($product, $productToProcess['source']);
         }
     }
 

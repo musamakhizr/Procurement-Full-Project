@@ -114,12 +114,14 @@ class ImportedProductSyncService
 
     public function processMainImage(Product $product, string $imageUrl, bool $retryTransientFailures = false): void
     {
+        $taskKey = $this->importTaskKey('main', 'redraw', $imageUrl);
+
         try {
             $processedImage = $this->fogotProductMediaService->redrawMainImage($imageUrl);
             $this->rememberImageProcessingResult($product, 'redraw_gallery_results', $imageUrl, $processedImage !== null ? 'processed' : 'empty');
 
             if ($processedImage === null) {
-                $this->markImportTaskFinished($product, "Redraw API returned no processed main image for [{$imageUrl}].");
+                $this->markImportTaskFinished($product, "Redraw API returned no processed main image for [{$imageUrl}].", $taskKey);
 
                 return;
             }
@@ -130,7 +132,7 @@ class ImportedProductSyncService
                 'source_url' => $processedImage['source_url'],
             ], 0, 'gallery');
 
-            $this->markImportTaskFinished($product, $stored ? null : "Unable to store main image [{$imageUrl}].");
+            $this->markImportTaskFinished($product, $stored ? null : "Unable to store main image [{$imageUrl}].", $taskKey);
         } catch (Throwable $exception) {
             if ($retryTransientFailures && $this->isTransientFogotFailure($exception)) {
                 $this->logTaskWarning('Imported main image processing hit a transient Fogot failure; queue will retry.', $product, $imageUrl, $exception);
@@ -144,20 +146,27 @@ class ImportedProductSyncService
 
     public function processDetailImage(Product $product, string $imageUrl, string $section, int $sortOrder, string $processor = 'translate', bool $retryTransientFailures = false): void
     {
-        try {
-            $descriptionClassifierUnavailable = false;
+        $taskKey = $this->importTaskKey($section, $processor, $imageUrl);
+        $descriptionClassifyTaskKey = $this->importTaskKey('description', 'classify', $imageUrl);
+        $descriptionTranslateTaskKey = $this->importTaskKey('description', 'translate', $imageUrl);
 
+        try {
             if ($section === 'description') {
                 try {
                     if (! $this->fogotProductMediaService->shouldKeepDescriptionImage($imageUrl)) {
                         $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'rejected');
-                        $this->markImportTaskFinished($product);
+                        $this->markImportTaskFinished($product, null, $descriptionClassifyTaskKey);
+                        $this->rememberImageProcessingResult($product, 'translate_description_results', $imageUrl, 'skipped');
+                        $this->markImportTaskFinished($product, null, $descriptionTranslateTaskKey);
 
                         return;
                     }
+
+                    $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'approved');
+                    $this->markImportTaskFinished($product, null, $descriptionClassifyTaskKey);
                 } catch (Throwable $exception) {
-                    $descriptionClassifierUnavailable = true;
                     $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'classifier_unavailable');
+                    $this->markImportTaskFinished($product, "Description image classification failed for [{$imageUrl}]: {$exception->getMessage()}", $descriptionClassifyTaskKey);
                     $this->logTaskWarning('Description image classification failed; continuing with translation.', $product, $imageUrl, $exception, [
                         'section' => $section,
                         'sort_order' => $sortOrder,
@@ -171,10 +180,6 @@ class ImportedProductSyncService
                 default => $this->fogotProductMediaService->translateImage($imageUrl)[0] ?? null,
             };
 
-            if ($section === 'description' && ! $descriptionClassifierUnavailable) {
-                $this->rememberImageProcessingResult($product, 'classify_description_results', $imageUrl, 'approved');
-            }
-
             $resultKey = match ($processor) {
                 'redraw' => 'redraw_gallery_results',
                 default => $section === 'description' ? 'translate_description_results' : 'translate_variant_results',
@@ -183,7 +188,7 @@ class ImportedProductSyncService
             $this->rememberImageProcessingResult($product, $resultKey, $imageUrl, $processedImage !== null ? 'processed' : 'empty');
 
             if ($processedImage === null) {
-                $this->markImportTaskFinished($product, "Processor [{$processor}] returned no processed {$section} image for [{$imageUrl}].");
+                $this->markImportTaskFinished($product, "Processor [{$processor}] returned no processed {$section} image for [{$imageUrl}].", $section === 'description' ? $descriptionTranslateTaskKey : $taskKey);
 
                 return;
             }
@@ -198,7 +203,7 @@ class ImportedProductSyncService
                 $this->rememberApprovedDescriptionImage($product, $imageUrl);
             }
 
-            $this->markImportTaskFinished($product, $stored ? null : "Unable to store {$section} image [{$imageUrl}].");
+            $this->markImportTaskFinished($product, $stored ? null : "Unable to store {$section} image [{$imageUrl}].", $section === 'description' ? $descriptionTranslateTaskKey : $taskKey);
         } catch (Throwable $exception) {
             if ($retryTransientFailures && $this->isTransientFogotFailure($exception)) {
                 $this->logTaskWarning('Imported detail image processing hit a transient Fogot failure; queue will retry.', $product, $imageUrl, $exception, [
@@ -217,7 +222,7 @@ class ImportedProductSyncService
     public function recordMainImageFailure(Product $product, string $imageUrl, Throwable $exception): void
     {
         $this->rememberImageProcessingResult($product, 'redraw_gallery_results', $imageUrl, 'failed');
-        $this->markImportTaskFinished($product, "Main image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+        $this->markImportTaskFinished($product, "Main image processing failed for [{$imageUrl}]: {$exception->getMessage()}", $this->importTaskKey('main', 'redraw', $imageUrl));
         $this->logTaskWarning('Imported main image processing failed.', $product, $imageUrl, $exception);
     }
 
@@ -228,7 +233,7 @@ class ImportedProductSyncService
             default => $section === 'description' ? 'translate_description_results' : 'translate_variant_results',
         };
         $this->rememberImageProcessingResult($product, $resultKey, $imageUrl, 'failed');
-        $this->markImportTaskFinished($product, ucfirst($section)." image processing failed for [{$imageUrl}]: {$exception->getMessage()}");
+        $this->markImportTaskFinished($product, ucfirst($section)." image processing failed for [{$imageUrl}]: {$exception->getMessage()}", $this->importTaskKey($section, $processor, $imageUrl));
         $this->logTaskWarning('Imported detail image processing failed.', $product, $imageUrl, $exception, [
             'section' => $section,
             'sort_order' => $sortOrder,
@@ -269,9 +274,9 @@ class ImportedProductSyncService
                 $this->logTaskWarning('Imported product category classification returned an empty result.', $product, $product->source_image_url ?? '');
             }
 
-            $this->markImportTaskFinished($product);
+            $this->markImportTaskFinished($product, null, 'category:classify');
         } catch (Throwable $exception) {
-            $this->markImportTaskFinished($product, "Category classification failed: {$exception->getMessage()}");
+            $this->markImportTaskFinished($product, "Category classification failed: {$exception->getMessage()}", 'category:classify');
             $this->logTaskWarning('Imported category classification failed.', $product, $product->source_image_url ?? '', $exception);
         }
     }
@@ -373,7 +378,7 @@ class ImportedProductSyncService
 
         $totalTasks = count($galleryImageUrls)
             + count($variantImageUrls)
-            + count($descriptionImageUrls)
+            + (count($descriptionImageUrls) * 2)
             + ($mainImageUrl !== null ? 1 : 0)
             + ($this->shouldClassifyProductCategory($product) ? 1 : 0);
 
@@ -398,13 +403,40 @@ class ImportedProductSyncService
         ];
     }
 
-    private function markImportTaskFinished(Product $product, ?string $error = null): void
+    private function markImportTaskFinished(Product $product, ?string $error = null, ?string $taskKey = null): void
     {
-        DB::transaction(function () use ($product, $error) {
+        DB::transaction(function () use ($product, $error, $taskKey) {
             /** @var Product $freshProduct */
             $freshProduct = Product::query()->lockForUpdate()->findOrFail($product->getKey());
 
+            if (in_array($freshProduct->import_status, ['completed', 'failed'], true)) {
+                return;
+            }
+
+            $debug = is_array($freshProduct->import_api_debug) ? $freshProduct->import_api_debug : [];
+            $completedTaskKeys = collect($debug['completed_task_keys'] ?? [])
+                ->filter(fn ($key) => is_string($key) && $key !== '')
+                ->values();
+
+            if ($taskKey !== null && $completedTaskKeys->contains($taskKey)) {
+                return;
+            }
+
+            if ($taskKey !== null) {
+                $debug['completed_task_keys'] = $completedTaskKeys
+                    ->push($taskKey)
+                    ->unique()
+                    ->values()
+                    ->all();
+            }
+
+            $totalTasks = max((int) ($freshProduct->import_total_tasks ?? 0), 0);
             $completedTasks = (int) ($freshProduct->import_completed_tasks ?? 0) + 1;
+
+            if ($totalTasks > 0) {
+                $completedTasks = min($completedTasks, $totalTasks);
+            }
+
             $existingError = $freshProduct->import_error;
             $combinedError = $existingError;
 
@@ -418,9 +450,10 @@ class ImportedProductSyncService
             $freshProduct->forceFill([
                 'import_completed_tasks' => $completedTasks,
                 'import_error' => $combinedError !== '' ? $combinedError : null,
+                'import_api_debug' => $debug,
             ])->save();
 
-            if ($completedTasks >= (int) ($freshProduct->import_total_tasks ?? 0)) {
+            if ($totalTasks > 0 && $completedTasks >= $totalTasks) {
                 $this->finalizeImport($freshProduct);
             }
         });
@@ -438,7 +471,13 @@ class ImportedProductSyncService
 
         $product->forceFill([
             'import_status' => $status,
+            'import_completed_tasks' => min((int) ($product->import_completed_tasks ?? 0), max((int) ($product->import_total_tasks ?? 0), 0)),
         ])->save();
+    }
+
+    private function importTaskKey(string $section, string $processor, string $imageUrl): string
+    {
+        return "{$section}:{$processor}:".md5($imageUrl);
     }
 
     private function shouldClassifyProductCategory(Product $product): bool
@@ -573,6 +612,7 @@ class ImportedProductSyncService
             'translate_description_results' => [],
             'translate_variant_urls' => array_values($variantImageUrls),
             'translate_variant_results' => [],
+            'completed_task_keys' => [],
             'category_request' => [
                 'product_text' => $this->buildProductCategoryText($product),
                 'item' => $categoryItem,

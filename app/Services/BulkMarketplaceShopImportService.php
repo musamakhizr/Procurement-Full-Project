@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MarketplaceShopImport;
+use App\Models\Product;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -27,6 +28,8 @@ class BulkMarketplaceShopImportService
                 $productLinks = $this->shopProductFetchService->fetchProductLinksForShop(
                     $shopIdentity['shop_id'],
                     $shopIdentity['seller_id'],
+                    $shopIdentity['seed_platform'],
+                    $shopIdentity['seller_nick'] ?? null,
                 );
 
                 $seedProductLink = $this->canonicalProductLink(
@@ -93,6 +96,7 @@ class BulkMarketplaceShopImportService
                     'seed_platform' => $shopIdentity['seed_platform'],
                     'seed_num_iid' => $shopIdentity['seed_num_iid'],
                     'seller_id' => $shopIdentity['seller_id'],
+                    'seller_nick' => $shopIdentity['seller_nick'] ?? null,
                     'shop_id' => $shopIdentity['shop_id'],
                     'raw_seed_payload' => $shopIdentity['raw'],
                     'status' => 'fetching_shop_products',
@@ -105,6 +109,8 @@ class BulkMarketplaceShopImportService
                 $productLinks = $this->shopProductFetchService->fetchProductLinksForShop(
                     $shopIdentity['shop_id'],
                     $shopIdentity['seller_id'],
+                    $shopIdentity['seed_platform'],
+                    $shopIdentity['seller_nick'] ?? null,
                 );
                 $seedProductLink = $this->canonicalProductLink(
                     $shopIdentity['seed_platform'],
@@ -174,16 +180,23 @@ class BulkMarketplaceShopImportService
         }
 
         try {
-            $this->productImportService->importLinksSequentially($uniqueLinks);
+            $this->productImportService->importLinksSequentially(
+                $uniqueLinks,
+                fn (string $productLink, Product $product) => $this->markProductLinkProcessed($productLink, $importsToComplete, $product),
+            );
 
             foreach ($importsToComplete as $shopImport) {
                 $shopImport->refresh();
+                $importedCount = min((int) $shopImport->imported_product_links, (int) $shopImport->total_product_links);
+                $isCompleted = $shopImport->total_product_links > 0 && $importedCount >= (int) $shopImport->total_product_links;
                 $shopImport->forceFill([
-                    'status' => 'completed',
-                    'imported_product_links' => (int) $shopImport->total_product_links,
+                    'status' => $isCompleted ? 'completed' : 'failed',
+                    'imported_product_links' => $importedCount,
+                    'error' => $isCompleted ? null : "Only {$importedCount} of {$shopImport->total_product_links} product links were processed.",
                     'metadata' => [
                         ...(is_array($shopImport->metadata) ? $shopImport->metadata : []),
-                        'current_stage' => 'completed',
+                        'current_stage' => $isCompleted ? 'completed' : 'partial_product_import',
+                        'failed_stage' => $isCompleted ? null : 'importing_products',
                     ],
                     'completed_at' => now(),
                 ])->save();
@@ -214,5 +227,50 @@ class BulkMarketplaceShopImportService
             'jd' => "https://item.jd.com/{$numIid}.html",
             default => "https://item.taobao.com/item.htm?id={$numIid}",
         };
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, MarketplaceShopImport>  $shopImports
+     */
+    private function markProductLinkProcessed(string $productLink, $shopImports, Product $product): void
+    {
+        foreach ($shopImports as $shopImport) {
+            $links = collect($shopImport->product_links ?? [])
+                ->filter(fn ($link) => is_string($link) && $link !== '')
+                ->values();
+
+            if (! $links->contains($productLink)) {
+                continue;
+            }
+
+            $shopImport->refresh();
+            $metadata = is_array($shopImport->metadata) ? $shopImport->metadata : [];
+            $processedLinks = collect($metadata['processed_product_links'] ?? [])
+                ->filter(fn ($link) => is_string($link) && $link !== '')
+                ->push($productLink)
+                ->unique()
+                ->values();
+            $processedProductIds = collect($metadata['processed_product_ids'] ?? [])
+                ->filter(fn ($id) => is_int($id) || is_numeric($id))
+                ->push((int) $product->getKey())
+                ->unique()
+                ->values();
+            $importedCount = min($processedLinks->count(), (int) $shopImport->total_product_links);
+            $isCompleted = $shopImport->total_product_links > 0 && $importedCount >= (int) $shopImport->total_product_links;
+
+            $shopImport->forceFill([
+                'status' => $isCompleted ? 'completed' : 'importing_products',
+                'imported_product_links' => $importedCount,
+                'metadata' => [
+                    ...$metadata,
+                    'current_stage' => $isCompleted ? 'completed' : 'importing_products',
+                    'last_processed_product_link' => $productLink,
+                    'last_processed_product_id' => $product->getKey(),
+                    'processed_product_links' => $processedLinks->all(),
+                    'processed_product_ids' => $processedProductIds->all(),
+                ],
+                'completed_at' => $isCompleted ? now() : null,
+            ])->save();
+        }
     }
 }

@@ -159,7 +159,7 @@ class AdminProductController extends Controller
 
         if ($shopUrls === []) {
             return response()->json([
-                'message' => 'No supported Taobao or Tmall product URLs were found in this file. Upload at least one product URL from each shop so the importer can resolve seller_id and shop_id.',
+                'message' => 'No supported Taobao, Tmall, or 1688 product URLs were found in this file. Upload at least one product URL from each shop so the importer can resolve the shop identity.',
             ], 422);
         }
 
