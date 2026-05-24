@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { ChevronRight, Package, Clock, CheckCircle, MessageSquare, Download, ShoppingCart, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -29,6 +29,8 @@ export function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [visibleVariantCount, setVisibleVariantCount] = useState(INITIAL_VISIBLE_VARIANTS);
   const [visibleDescriptionImageCount, setVisibleDescriptionImageCount] = useState(INITIAL_VISIBLE_DESCRIPTION_IMAGES);
+  const variantAutoLoadRef = useRef<HTMLDivElement | null>(null);
+  const descriptionImageAutoLoadRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -156,6 +158,56 @@ export function ProductDetailPage() {
       return current >= product.images.length ? 0 : current;
     });
   }, [product?.images.length]);
+
+  useEffect(() => {
+    if (!product || visibleVariantCount >= product.variants.length) {
+      return;
+    }
+
+    const target = variantAutoLoadRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleVariantCount((current) => Math.min(current + VISIBLE_VARIANT_INCREMENT, product.variants.length));
+        }
+      },
+      { root: null, rootMargin: '420px 0px', threshold: 0.01 },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [product, product?.variants.length, visibleVariantCount]);
+
+  useEffect(() => {
+    if (!product || visibleDescriptionImageCount >= product.description_images.length) {
+      return;
+    }
+
+    const target = descriptionImageAutoLoadRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleDescriptionImageCount((current) => Math.min(current + VISIBLE_DESCRIPTION_IMAGE_INCREMENT, product.description_images.length));
+        }
+      },
+      { root: null, rootMargin: '520px 0px', threshold: 0.01 },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [product, product?.description_images.length, visibleDescriptionImageCount]);
 
   if (isLoading) {
     return <div className="min-h-screen bg-[#F8FAFC] pt-24 px-6 text-slate-600">Loading product...</div>;
@@ -565,14 +617,8 @@ export function ProductDetailPage() {
                         );
                       })}
                       {hiddenVariantCount > 0 && (
-                        <div className="px-4 py-4">
-                          <button
-                            type="button"
-                            onClick={() => setVisibleVariantCount((current) => current + VISIBLE_VARIANT_INCREMENT)}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#4F6BFF] transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]"
-                          >
-                            Show more SKUs ({hiddenVariantCount})
-                          </button>
+                        <div ref={variantAutoLoadRef} className="px-4 py-4 text-center text-xs font-semibold text-slate-400">
+                          Loading more SKUs...
                         </div>
                       )}
                     </div>
@@ -771,13 +817,9 @@ export function ProductDetailPage() {
                       </div>
                     ))}
                     {hiddenDescriptionImageCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleDescriptionImageCount((current) => current + VISIBLE_DESCRIPTION_IMAGE_INCREMENT)}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#4F6BFF] transition-colors hover:border-[#4F6BFF] hover:bg-[#EEF2FF]"
-                      >
-                        Show more detail images ({hiddenDescriptionImageCount})
-                      </button>
+                      <div ref={descriptionImageAutoLoadRef} className="py-3 text-center text-xs font-semibold text-slate-400">
+                        Loading more detail images...
+                      </div>
                     )}
                   </div>
                 </div>
