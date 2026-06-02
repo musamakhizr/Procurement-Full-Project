@@ -1,6 +1,6 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw, Store } from 'lucide-react';
+import { Search, Plus, Trash2, Package, TrendingUp, AlertCircle, Filter, Download, Upload, Pencil, ChevronLeft, ChevronRight, RotateCcw, Store, Eye } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { createAdminProduct, deleteAdminProduct, fetchAdminProduct, fetchAdminProductFromLink, fetchAdminProducts, fetchAdminStats, fetchCategories, ImportedMarketplaceProduct, importAdminProductsSpreadsheet, importAdminShopSpreadsheet, PaginatedResponse, ProductSummary, retryAdminProductImport, updateAdminProduct } from '../api';
 import { formatApiCategoryL1 } from '../utils/category';
@@ -51,6 +51,7 @@ export function AdminProductsPage() {
   const [importError, setImportError] = useState('');
   const [previewProduct, setPreviewProduct] = useState<ImportedMarketplaceProduct | null>(null);
   const [importedProduct, setImportedProduct] = useState<ImportedMarketplaceProduct | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; alt: string; top: number; left: number } | null>(null);
 
   // Flatten to show parent > subcategory pairs for the product form
   const flatCategories = useMemo(() => {
@@ -270,6 +271,20 @@ export function AdminProductsPage() {
         </span>
       </div>
     );
+  };
+
+  const showImagePreview = (event: MouseEvent<HTMLDivElement>, src: string, alt: string) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const previewSize = 208;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2 - previewSize / 2, 12),
+      window.innerWidth - previewSize - 12,
+    );
+    const top = rect.top - previewSize - 14 > 12
+      ? rect.top - previewSize - 14
+      : rect.bottom + 14;
+
+    setImagePreview({ src, alt, top, left });
   };
 
   const handleCreateProduct = async () => {
@@ -655,6 +670,7 @@ export function AdminProductsPage() {
               <thead className="bg-slate-50 border-b-2 border-slate-200">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SKU</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Image</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.productName')}</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.category')}</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.stock')}</th>
@@ -669,6 +685,28 @@ export function AdminProductsPage() {
                 {products.map((product) => (
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono font-semibold text-slate-700">{product.sku}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {product.image ? (
+                        <div
+                          className="h-12 w-12 rounded-lg"
+                          onMouseEnter={(event) => showImagePreview(event, product.image as string, product.name)}
+                          onMouseMove={(event) => showImagePreview(event, product.image as string, product.name)}
+                          onMouseLeave={() => setImagePreview(null)}
+                        >
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            loading="lazy"
+                            decoding="async"
+                            className="h-12 w-12 rounded-lg border border-slate-200 bg-slate-50 object-cover shadow-sm transition-transform duration-200 hover:scale-105"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[10px] font-semibold text-slate-400">
+                          No img
+                        </div>
+                      )}
+                    </td>
                     <td className="px-6 py-4"><div className="text-sm font-semibold text-slate-900">{product.name}</div></td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-slate-600">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</span>
@@ -680,6 +718,9 @@ export function AdminProductsPage() {
                     <td className="px-6 py-4 whitespace-nowrap">{getImportJobBadge(product)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
+                        <Link to={`/marketplace/product/${product.id}`} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="View product">
+                          <Eye className="w-4 h-4" />
+                        </Link>
                         <button onClick={() => void handleEditProduct(product)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit product">
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -909,6 +950,19 @@ export function AdminProductsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {imagePreview && (
+        <div
+          className="pointer-events-none fixed z-[70] rounded-xl border border-slate-200 bg-white p-2 opacity-100 shadow-2xl transition-all duration-200"
+          style={{ top: imagePreview.top, left: imagePreview.left }}
+        >
+          <img
+            src={imagePreview.src}
+            alt={imagePreview.alt}
+            className="h-52 w-52 rounded-lg object-cover"
+          />
         </div>
       )}
     </div>

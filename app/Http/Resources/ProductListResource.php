@@ -23,7 +23,7 @@ class ProductListResource extends JsonResource
             'category' => $this->category?->name,
             'category_slug' => $this->category?->parent?->slug ?? $this->category?->slug,
             'subcategory_slug' => $this->category?->parent ? $this->category?->slug : null,
-            'image' => ProductImageUrl::fromStoredPath($this->image_url, false),
+            'image' => ProductImageUrl::fromStoredPath($this->primaryImagePath(), false),
             'image_source_url' => $this->source_image_url ?? $this->image_url,
             'cat_from_api' => $this->cat_from_api,
             'moq' => $this->moq,

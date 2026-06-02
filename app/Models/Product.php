@@ -173,6 +173,28 @@ class Product extends Model
         return $this->mergedImagePathsForSection('gallery', $sourceGalleryImages, $this->image_url);
     }
 
+    public function primaryImagePath(): ?string
+    {
+        if ($this->import_status === 'completed') {
+            $storedGalleryImage = $this->storedImagePathsForSection('gallery', null, true)->first();
+
+            if (is_string($storedGalleryImage) && $storedGalleryImage !== '') {
+                return $storedGalleryImage;
+            }
+        }
+
+        return collect([
+            data_get($this->source_payload, 'main_image_url'),
+            data_get($this->source_payload, 'image_url'),
+            $this->source_image_url,
+            $this->image_url,
+            $this->galleryPaths()->first(),
+        ])
+            ->filter(fn ($path) => is_string($path) && $path !== '' && ! $this->shouldIgnoreImageUrl($path))
+            ->unique()
+            ->first();
+    }
+
     /**
      * @return Collection<int, string>
      */
