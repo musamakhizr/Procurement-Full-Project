@@ -419,8 +419,8 @@ export function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 mb-8">
+      <div className="max-w-[1180px] mx-auto px-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-4">
           <Link to="/" className="hover:text-[#4F6BFF]">{t('product.home')}</Link>
           <ChevronRight className="w-4 h-4" />
           <Link to="/marketplace" className="hover:text-[#4F6BFF]">{t('product.catalog')}</Link>
@@ -428,45 +428,50 @@ export function ProductDetailPage() {
           <span className="text-slate-900 font-medium">{product.name}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 mb-12">
-          <div>
-            <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden mb-4">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_270px] lg:items-start mb-8">
+          <div className="lg:sticky lg:top-24 lg:self-start">
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4 p-4 shadow-sm">
               <div className="aspect-square bg-slate-100">
                 <img src={heroImage} alt={product.name} loading="eager" decoding="async" fetchPriority="high" className="w-full h-full object-cover" />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {visibleGalleryImages.map((image, index) => (
                 <button
                   key={image}
                   onClick={() => setSelectedImage(index)}
-                  className={`aspect-square rounded-xl border-2 overflow-hidden transition-all ${selectedImage === index ? 'border-[#4F6BFF] ring-2 ring-[#4F6BFF]/20' : 'border-slate-200 hover:border-slate-300'}`}
+                  className={`aspect-square rounded-lg border overflow-hidden bg-white p-1 transition-all ${selectedImage === index ? 'border-[#1D4ED8] ring-2 ring-[#1D4ED8]/20' : 'border-slate-200 hover:border-slate-300'}`}
                 >
-                  <img src={image} alt="" loading={index === 0 ? 'eager' : 'lazy'} decoding="async" className="w-full h-full object-cover" />
+                  <img src={image} alt="" loading={index === 0 ? 'eager' : 'lazy'} decoding="async" className="w-full h-full rounded-md object-cover" />
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <div className="mb-6">
-              <div className="text-sm text-[#7C3AED] font-semibold mb-2">{categoryPath}</div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">{product.name}</h1>
-              <div className="text-sm text-slate-500">SKU: {product.sku}</div>
+            <div className="mb-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-2 text-xs font-semibold text-[#1D4ED8]">{categoryPath}</div>
+              <h1 className="mb-3 text-xl font-bold leading-snug text-slate-950">{product.name}</h1>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#1D4ED8]">Verified</span>
+                <span className="rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[11px] font-bold text-[#B45309]">Top Rated</span>
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Fast Ship</span>
+              </div>
+              <div className="mt-3 text-xs text-slate-500">SKU: {product.sku}</div>
               {selectedVariant && (
-                <div className="mt-3 inline-flex rounded-full bg-[#FFF4E8] px-4 py-2 text-sm font-semibold text-[#B45309]">
+                <div className="mt-3 inline-flex rounded-full bg-[#FFF4E8] px-3 py-1.5 text-xs font-semibold text-[#B45309]">
                   Selected: {selectedVariant.label ?? selectedVariant.sku_id}
                 </div>
               )}
             </div>
 
-            <div className="bg-[#EEF2FF] rounded-xl p-4 mb-6">
-              <div className="flex items-center gap-3 mb-3">
+            <div className="mb-4 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] p-3">
+              <div className="flex items-center gap-2 mb-2">
                 <CheckCircle className="w-5 h-5 text-[#4F6BFF]" />
-                <span className="font-semibold text-slate-900">{product.in_stock ? t('product.inStock') : 'Out of Stock'}</span>
-                <span className="text-slate-600">({product.stock_quantity} {t('marketplace.units')} {t('product.available')})</span>
+                <span className="text-sm font-semibold text-slate-900">{product.in_stock ? t('product.inStock') : 'Out of Stock'}</span>
+                <span className="text-xs text-slate-600">({product.stock_quantity} {t('marketplace.units')} {t('product.available')})</span>
               </div>
-              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                 <div className="flex items-center gap-2 text-slate-700">
                   <Package className="w-4 h-4 text-slate-400" />
                   <span className="font-medium">{t('marketplace.moq')}</span>
@@ -481,13 +486,13 @@ export function ProductDetailPage() {
             </div>
 
             {product.variants.length > 0 && (
-              <>
-                <div className="mb-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white">
-                  <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4">
+              <div className="mb-6 grid grid-cols-1 items-start gap-5">
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">Select SKUs</h3>
-                        <p className="text-sm text-slate-600">Choose one or multiple variants from this product.</p>
+                        <h3 className="text-sm font-bold text-slate-950">Select Specifications</h3>
+                        <p className="text-xs text-slate-600">Choose one or multiple variants for this item.</p>
                       </div>
                       <button
                         type="button"
@@ -500,7 +505,14 @@ export function ProductDetailPage() {
                     </div>
                   </div>
 
-                  <div className="max-h-[560px] overflow-y-auto">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs">
+                    <span className="rounded-full bg-[#1D4ED8] px-3 py-1 font-bold text-white">All</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">Entry Level</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">Advanced</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">Premium</span>
+                  </div>
+
+                  <div className="max-h-[520px] overflow-y-auto">
                     <div className="divide-y divide-slate-100">
                       {visibleVariants.map((variant) => {
                         const rowQuantity = variantQuantities[variant.id] ?? 0;
@@ -532,7 +544,7 @@ export function ProductDetailPage() {
                               }
                             }}
                             aria-disabled={isOutOfStock}
-                            className={`grid grid-cols-[56px_minmax(0,1fr)] gap-3 border-l-4 px-4 py-3 transition-all md:grid-cols-[56px_minmax(0,1fr)_90px_76px_132px_86px] md:items-center ${
+                            className={`grid grid-cols-[44px_minmax(0,1fr)] gap-3 border-l-4 px-3 py-2.5 transition-all md:grid-cols-[44px_minmax(0,1fr)_76px_64px_108px_76px] md:items-center ${
                               isOutOfStock
                                 ? 'cursor-not-allowed border-l-transparent bg-slate-50 opacity-45'
                                 : isSelected
@@ -542,12 +554,12 @@ export function ProductDetailPage() {
                                   : 'border-l-transparent hover:bg-slate-50'
                             }`}
                           >
-                            <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-14 w-14 rounded-xl border border-slate-200 bg-slate-50 object-cover" />
+                            <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-11 w-11 rounded-md border border-slate-200 bg-slate-50 object-cover" />
 
                             <div className="min-w-0">
-                              <div className="line-clamp-2 text-sm font-bold text-slate-900">{rowLabel}</div>
-                              {optionLabel && <div className="mt-1 line-clamp-1 text-xs text-slate-500">{optionLabel}</div>}
-                              <div className="mt-2 flex flex-wrap gap-1.5">
+                              <div className="line-clamp-1 text-xs font-bold text-slate-900">{rowLabel}</div>
+                              {optionLabel && <div className="mt-1 line-clamp-1 text-[11px] text-slate-500">{optionLabel}</div>}
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {isInList(product.id, variant.id) && (
                                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Already in list</span>
                                 )}
@@ -561,18 +573,18 @@ export function ProductDetailPage() {
                             </div>
 
                             <div className="text-left md:text-right">
-                              <div className="text-sm font-bold text-slate-900">{currencySymbol}{variant.price.toFixed(2)}</div>
+                              <div className="text-xs font-bold text-slate-900">{currencySymbol}{variant.price.toFixed(2)}</div>
                               <div className="text-[11px] font-medium text-slate-500">Unit price</div>
                             </div>
 
                             <div className="text-left md:text-right">
-                              <div className={`text-sm font-bold ${isOutOfStock ? 'text-slate-500' : maxStock <= product.moq ? 'text-orange-600' : 'text-slate-800'}`}>
+                              <div className={`text-xs font-bold ${isOutOfStock ? 'text-slate-500' : maxStock <= product.moq ? 'text-orange-600' : 'text-slate-800'}`}>
                                 {maxStock > 9999 ? '9999+' : maxStock.toLocaleString()}
                               </div>
                               <div className="text-[11px] font-medium text-slate-500">{isOutOfStock ? 'Unavailable' : maxStock <= product.moq ? 'Low stock' : 'Stock'}</div>
                             </div>
 
-                            <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+                            <div className="flex items-center overflow-hidden rounded-md border border-slate-200 bg-white">
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -580,7 +592,7 @@ export function ProductDetailPage() {
                                   adjustVariantQuantity(variant, -1);
                                 }}
                                 disabled={isOutOfStock || rowQuantity <= 0}
-                                className="h-10 w-10 border-r border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+                                className="h-8 w-8 border-r border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                               >
                                 -
                               </button>
@@ -592,7 +604,7 @@ export function ProductDetailPage() {
                                 disabled={isOutOfStock}
                                 onClick={(event) => event.stopPropagation()}
                                 onChange={(event) => updateVariantQuantity(variant, parseInt(event.target.value, 10) || 0)}
-                                className="h-10 min-w-0 flex-1 border-0 text-center text-sm font-bold text-slate-900 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                className="h-8 min-w-0 flex-1 border-0 text-center text-xs font-bold text-slate-900 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                               />
                               <button
                                 type="button"
@@ -601,14 +613,14 @@ export function ProductDetailPage() {
                                   adjustVariantQuantity(variant, 1);
                                 }}
                                 disabled={isOutOfStock || (maxStock > 0 && rowQuantity >= maxStock)}
-                                className="h-10 w-10 border-l border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+                                className="h-8 w-8 border-l border-slate-200 font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                               >
                                 +
                               </button>
                             </div>
 
                             <div className="text-left md:text-right">
-                              <div className={`text-sm font-bold ${isSelected ? 'text-[#4F6BFF]' : 'text-slate-300'}`}>
+                              <div className={`text-xs font-bold ${isSelected ? 'text-[#1D4ED8]' : 'text-slate-300'}`}>
                                 {isSelected ? `${currencySymbol}${rowSubtotal.toFixed(2)}` : '-'}
                               </div>
                               <div className="text-[11px] font-medium text-slate-500">Subtotal</div>
@@ -625,7 +637,7 @@ export function ProductDetailPage() {
                   </div>
                 </div>
 
-                <div className="mb-6 rounded-2xl border-2 border-slate-200 bg-white p-6">
+                <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 xl:hidden">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900">Order Summary</h3>
@@ -694,7 +706,7 @@ export function ProductDetailPage() {
                     </button>
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {product.variants.length === 0 && product.option_groups.length > 0 && (
@@ -792,6 +804,78 @@ export function ProductDetailPage() {
               </button>
             </div>
           </div>
+
+          {product.variants.length > 0 && (
+            <aside className="hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-24 xl:block xl:self-start">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950">Order Summary</h3>
+                  <p className="text-xs text-slate-500">
+                    {selectedSkuRows.length > 0
+                      ? `${selectedSkuRows.length} SKU${selectedSkuRows.length === 1 ? '' : 's'} selected`
+                      : 'Select at least one SKU.'}
+                  </p>
+                </div>
+                <div className="rounded-full bg-[#1D4ED8] px-2.5 py-1 text-xs font-bold text-white">{selectedSkuRows.length}</div>
+              </div>
+
+              {selectedSkuRows.length > 0 && (
+                <div className="mb-5 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  {selectedSkuRows.map((row) => {
+                    const rowImage = row.variant.image ?? product.image_source_url ?? 'https://placehold.co/120x120?text=SKU';
+                    const rowLabel = row.variant.label ?? row.variant.sku_id ?? product.name;
+
+                    return (
+                      <div key={row.variant.id} className="flex gap-2 rounded-lg border border-[#1D4ED8]/20 bg-[#EFF6FF] p-2">
+                        <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-10 w-10 rounded-md border border-white object-cover shadow-sm" />
+                        <div className="min-w-0 flex-1">
+                          <div className="line-clamp-2 text-xs font-bold text-slate-900">{rowLabel}</div>
+                          <div className="mt-1 text-xs text-slate-600">{currencySymbol}{row.variant.price.toFixed(2)} x {row.quantity}</div>
+                        </div>
+                        <div className="text-right text-xs font-bold text-[#1D4ED8]">{currencySymbol}{(row.variant.price * row.quantity).toFixed(2)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mb-5 space-y-3 border-t border-slate-200 pt-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-slate-600">Total quantity</span>
+                  <span className="font-bold text-slate-900">{selectedSkuQuantity} {t('marketplace.units')}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-slate-600">Subtotal</span>
+                  <span className="font-bold text-slate-900">{currencySymbol}{selectedSkuSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                  <span className="text-sm font-bold text-slate-900">{t('product.totalEstimate')}</span>
+                  <span className="text-2xl font-bold text-[#1D4ED8]">{currencySymbol}{selectedSkuSubtotal.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => void handleAddSelectedSkus(false)}
+                  disabled={selectedSkuRows.length === 0 || isAddingSelectedSkus}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D4ED8] py-3 text-sm font-bold text-white transition-colors hover:bg-[#1E40AF] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {isAddingSelectedSkus ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShoppingCart className="h-5 w-5" />}
+                  {isAddingSelectedSkus ? 'Adding...' : 'Add Selected Items to List'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleAddSelectedSkus(true)}
+                  disabled={selectedSkuRows.length === 0 || isAddingSelectedSkus}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#1D4ED8] bg-white py-3 text-sm font-bold text-[#1D4ED8] transition-colors hover:bg-[#EEF2FF] disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  Request Quote
+                </button>
+              </div>
+            </aside>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl border-2 border-slate-200 p-8">
