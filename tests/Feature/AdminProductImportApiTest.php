@@ -896,6 +896,9 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame(1, $product->import_total_tasks);
         $this->assertSame('failed', $product->import_status);
         $this->assertCount(1, $product->import_api_debug['completed_task_keys']);
+        $this->assertNotNull($product->import_processing_started_at);
+        $this->assertNotNull($product->import_processing_completed_at);
+        $this->assertIsInt($product->import_processing_duration_ms);
     }
 
     public function test_product_media_job_processes_one_product_serially_without_dispatching_image_jobs(): void
@@ -1094,6 +1097,16 @@ class AdminProductImportApiTest extends TestCase
         $this->assertSame('processed', data_get($product->import_api_debug, 'translate_description_results.0.status'));
         $this->assertSame('processed', data_get($product->import_api_debug, 'translate_variant_results.0.status'));
         $this->assertSame('processed', data_get($product->import_api_debug, 'redraw_gallery_results.0.status'));
+        $this->assertNotNull($product->import_processing_started_at);
+        $this->assertNotNull($product->import_processing_completed_at);
+        $this->assertIsInt($product->import_processing_duration_ms);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->withToken($admin->createToken('test')->plainTextToken)
+            ->getJson('/api/admin/products?search=FULL-API-PROGRESS-1')
+            ->assertOk()
+            ->assertJsonPath('data.0.import_processing_timing.status', 'completed');
+
         Http::assertSentCount(6);
     }
 

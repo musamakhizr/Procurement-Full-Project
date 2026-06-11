@@ -6,8 +6,9 @@ use App\Exceptions\TransientFogotApiException;
 use App\Jobs\ProcessImportedProductMedia;
 use App\Models\Product;
 use App\Models\ProductVariant;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -64,6 +65,9 @@ class ImportedProductSyncService
             'import_api_debug' => null,
             'import_total_tasks' => 0,
             'import_completed_tasks' => 0,
+            'import_processing_started_at' => null,
+            'import_processing_completed_at' => null,
+            'import_processing_duration_ms' => null,
         ])->save();
     }
 
@@ -83,9 +87,13 @@ class ImportedProductSyncService
         ['main_image_url' => $mainImageUrl, 'gallery_images' => $galleryImageUrls, 'variant_images' => $variantImageUrls, 'description_images' => $descriptionImageUrls, 'total_tasks' => $totalTasks] = $this->initializeProcessing($product);
 
         if ($totalTasks === 0) {
+            $completedAt = now();
+
             $product->forceFill([
                 'import_status' => 'completed',
                 'import_error' => null,
+                'import_processing_completed_at' => $completedAt,
+                'import_processing_duration_ms' => $this->processingDurationMs($product, $completedAt),
             ])->save();
 
             return;
@@ -384,6 +392,8 @@ class ImportedProductSyncService
 
         $this->productImportImageService->resetProductImages($product);
 
+        $startedAt = now();
+
         $product->forceFill([
             'import_status' => 'processing',
             'import_error' => null,
@@ -392,6 +402,9 @@ class ImportedProductSyncService
             'cat_from_api' => null,
             'source_payload' => $this->withApprovedDescriptionImagesReset($importSource),
             'import_api_debug' => $this->buildImportApiDebug($product, $mainImageUrl, $galleryImageUrls, $variantImageUrls, $descriptionImageUrls),
+            'import_processing_started_at' => $startedAt,
+            'import_processing_completed_at' => null,
+            'import_processing_duration_ms' => null,
         ])->save();
 
         return [
@@ -447,11 +460,17 @@ class ImportedProductSyncService
                 ])));
             }
 
-            $freshProduct->forceFill([
+            $updates = [
                 'import_completed_tasks' => $completedTasks,
                 'import_error' => $combinedError !== '' ? $combinedError : null,
                 'import_api_debug' => $debug,
-            ])->save();
+            ];
+
+            if ($freshProduct->import_processing_started_at === null) {
+                $updates['import_processing_started_at'] = now();
+            }
+
+            $freshProduct->forceFill($updates)->save();
 
             if ($totalTasks > 0 && $completedTasks >= $totalTasks) {
                 $this->finalizeImport($freshProduct);
@@ -461,6 +480,12 @@ class ImportedProductSyncService
 
     private function finalizeImport(Product $product): void
     {
+        if ($product->import_processing_started_at === null) {
+            $product->forceFill([
+                'import_processing_started_at' => now(),
+            ])->save();
+        }
+
         $this->finalizeApprovedDescriptionImages($product);
         $product->load('productImages', 'variants');
         $this->syncVariantStoredImages($product);
@@ -468,10 +493,13 @@ class ImportedProductSyncService
         $status = $product->productImages->isEmpty() && filled($product->import_error)
             ? 'failed'
             : 'completed';
+        $completedAt = now();
 
         $product->forceFill([
             'import_status' => $status,
             'import_completed_tasks' => min((int) ($product->import_completed_tasks ?? 0), max((int) ($product->import_total_tasks ?? 0), 0)),
+            'import_processing_completed_at' => $completedAt,
+            'import_processing_duration_ms' => $this->processingDurationMs($product, $completedAt),
         ])->save();
     }
 
@@ -619,6 +647,17 @@ class ImportedProductSyncService
             ],
             'category_response' => null,
         ];
+    }
+
+    private function processingDurationMs(Product $product, Carbon $completedAt): int
+    {
+        $startedAt = $product->import_processing_started_at;
+
+        if ($startedAt === null) {
+            return 0;
+        }
+
+        return max(0, (int) $startedAt->diffInMilliseconds($completedAt));
     }
 
     private function rememberImageProcessingResult(Product $product, string $key, string $imageUrl, string $status): void

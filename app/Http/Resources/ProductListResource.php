@@ -38,11 +38,29 @@ class ProductListResource extends JsonResource
             'import_error' => $this->when($hasAttribute('import_error'), $this->import_error),
             'import_total_tasks' => $this->import_total_tasks,
             'import_completed_tasks' => $this->import_completed_tasks,
+            'import_processing_timing' => $this->when($hasAttribute('import_processing_started_at'), fn () => $this->importProcessingTimingSummary()),
             'last_updated' => $this->updated_at?->toDateString(),
             'unit_price' => $tierOne ? (float) $tierOne->price : (float) $this->base_price,
             'base_price_range' => $this->price_range,
             'price_tier_1' => $tierOne ? ['range' => $tierOne->label, 'price' => (float) $tierOne->price] : null,
             'price_tier_2' => $tierTwo ? ['range' => $tierTwo->label, 'price' => (float) $tierTwo->price] : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function importProcessingTimingSummary(): ?array
+    {
+        if ($this->import_processing_started_at === null && $this->import_processing_completed_at === null) {
+            return null;
+        }
+
+        return [
+            'status' => $this->import_status,
+            'started_at' => $this->import_processing_started_at?->toIso8601String(),
+            'ended_at' => $this->import_processing_completed_at?->toIso8601String(),
+            'duration_ms' => max(0, (int) ($this->import_processing_duration_ms ?? 0)),
         ];
     }
 }

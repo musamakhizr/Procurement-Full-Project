@@ -30,6 +30,9 @@ class Product extends Model
         'import_error',
         'import_total_tasks',
         'import_completed_tasks',
+        'import_processing_started_at',
+        'import_processing_completed_at',
+        'import_processing_duration_ms',
         'source_payload',
         'import_api_debug',
         'moq',
@@ -52,6 +55,9 @@ class Product extends Model
         'import_api_debug' => 'array',
         'import_total_tasks' => 'integer',
         'import_completed_tasks' => 'integer',
+        'import_processing_started_at' => 'datetime',
+        'import_processing_completed_at' => 'datetime',
+        'import_processing_duration_ms' => 'integer',
     ];
 
     public function category(): BelongsTo

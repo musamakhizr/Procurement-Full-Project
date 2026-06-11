@@ -29,6 +29,7 @@ export function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [visibleVariantCount, setVisibleVariantCount] = useState(INITIAL_VISIBLE_VARIANTS);
   const [visibleDescriptionImageCount, setVisibleDescriptionImageCount] = useState(INITIAL_VISIBLE_DESCRIPTION_IMAGES);
+  const [mainImagePreview, setMainImagePreview] = useState<{ src: string; alt: string } | null>(null);
   const variantAutoLoadRef = useRef<HTMLDivElement | null>(null);
   const descriptionImageAutoLoadRef = useRef<HTMLDivElement | null>(null);
 
@@ -358,6 +359,10 @@ export function ProductDetailPage() {
     updateVariantQuantity(variant, nextQuantity < minimumQuantity ? 0 : nextQuantity);
   };
 
+  const showMainImagePreview = (src: string) => {
+    setMainImagePreview({ src, alt: product?.name ?? 'Product image' });
+  };
+
   const selectedSkuRows = product.variants
     .map((variant) => ({
       variant,
@@ -419,7 +424,7 @@ export function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
-      <div className="max-w-[1180px] mx-auto px-4 sm:px-6">
+      <div className="mx-auto max-w-[1760px] px-4 sm:px-6 2xl:px-8">
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-4">
           <Link to="/" className="hover:text-[#4F6BFF]">{t('product.home')}</Link>
           <ChevronRight className="w-4 h-4" />
@@ -428,11 +433,20 @@ export function ProductDetailPage() {
           <span className="text-slate-900 font-medium">{product.name}</span>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_270px] lg:items-start mb-8">
+        <div className="mb-8 grid grid-cols-1 justify-center gap-5 lg:grid-cols-[minmax(340px,420px)_minmax(0,620px)] xl:grid-cols-[minmax(380px,460px)_minmax(0,620px)_minmax(280px,320px)] 2xl:grid-cols-[minmax(420px,500px)_minmax(0,640px)_minmax(300px,340px)] lg:items-start">
           <div className="lg:sticky lg:top-24 lg:self-start">
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4 p-4 shadow-sm">
               <div className="aspect-square bg-slate-100">
-                <img src={heroImage} alt={product.name} loading="eager" decoding="async" fetchPriority="high" className="w-full h-full object-cover" />
+                <img
+                  src={heroImage}
+                  alt={product.name}
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                  onMouseEnter={() => showMainImagePreview(heroImage)}
+                  onMouseLeave={() => setMainImagePreview(null)}
+                  className="h-full w-full cursor-zoom-in object-cover"
+                />
               </div>
             </div>
             <div className="grid grid-cols-4 gap-2">
@@ -448,7 +462,7 @@ export function ProductDetailPage() {
             </div>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <div className="mb-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 text-xs font-semibold text-[#1D4ED8]">{categoryPath}</div>
               <h1 className="mb-3 text-xl font-bold leading-snug text-slate-950">{product.name}</h1>
@@ -512,8 +526,8 @@ export function ProductDetailPage() {
                     <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">Premium</span>
                   </div>
 
-                  <div className="max-h-[520px] overflow-y-auto">
-                    <div className="divide-y divide-slate-100">
+                  <div className="max-h-[520px] overflow-auto">
+                    <div className="w-[620px] min-w-full divide-y divide-slate-100">
                       {visibleVariants.map((variant) => {
                         const rowQuantity = variantQuantities[variant.id] ?? 0;
                         const rowSubtotal = rowQuantity * variant.price;
@@ -523,6 +537,13 @@ export function ProductDetailPage() {
                         const isOutOfStock = maxStock <= 0;
                         const isSelected = rowQuantity > 0;
                         const isCurrent = selectedVariant?.id === variant.id;
+                        const rowBackgroundTone = isOutOfStock
+                          ? 'bg-slate-50'
+                          : isSelected
+                            ? 'bg-[#EEF2FF]'
+                            : isCurrent
+                              ? 'bg-[#FFF7ED]'
+                              : 'bg-white group-hover:bg-slate-50';
                         const optionLabel = variant.option_values
                           .map((option) => `${option.group_name}: ${option.value}`)
                           .join(' / ');
@@ -544,21 +565,25 @@ export function ProductDetailPage() {
                               }
                             }}
                             aria-disabled={isOutOfStock}
-                            className={`grid grid-cols-[44px_minmax(0,1fr)] gap-3 border-l-4 px-3 py-2.5 transition-all md:grid-cols-[44px_minmax(0,1fr)_76px_64px_108px_76px] md:items-center ${
+                            className={`group relative grid w-[620px] min-w-full grid-cols-[44px_minmax(110px,1fr)_66px_58px_92px_62px] gap-2 border-l-4 bg-white px-2.5 py-2.5 transition-all md:items-stretch ${
                               isOutOfStock
-                                ? 'cursor-not-allowed border-l-transparent bg-slate-50 opacity-45'
+                                ? 'cursor-not-allowed border-l-transparent opacity-45'
                                 : isSelected
-                                ? 'border-l-[#4F6BFF] bg-[#EEF2FF]/70'
+                                ? 'border-l-[#4F6BFF]'
                                 : isCurrent
-                                  ? 'border-l-[#F97316] bg-[#FFF7ED]/70'
-                                  : 'border-l-transparent hover:bg-slate-50'
+                                  ? 'border-l-[#F97316]'
+                                  : 'border-l-transparent'
                             }`}
                           >
-                            <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-11 w-11 rounded-md border border-slate-200 bg-slate-50 object-cover" />
+                            <div aria-hidden="true" className={`absolute inset-0 ${rowBackgroundTone} transition-colors`} />
 
-                            <div className="min-w-0">
-                              <div className="line-clamp-1 text-xs font-bold text-slate-900">{rowLabel}</div>
-                              {optionLabel && <div className="mt-1 line-clamp-1 text-[11px] text-slate-500">{optionLabel}</div>}
+                            <div className="relative z-10 self-stretch">
+                              <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-11 w-11 rounded-md border border-slate-200 bg-slate-50 object-cover" />
+                            </div>
+
+                            <div className="relative z-10 min-w-0 self-stretch">
+                              <div className="whitespace-normal break-words text-xs font-bold leading-snug text-slate-900">{rowLabel}</div>
+                              {optionLabel && <div className="mt-1 whitespace-normal break-words text-[11px] leading-snug text-slate-500">{optionLabel}</div>}
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {isInList(product.id, variant.id) && (
                                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Already in list</span>
@@ -572,19 +597,20 @@ export function ProductDetailPage() {
                               </div>
                             </div>
 
-                            <div className="text-left md:text-right">
+                            <div className="relative z-10 self-stretch text-left md:text-right">
                               <div className="text-xs font-bold text-slate-900">{currencySymbol}{variant.price.toFixed(2)}</div>
                               <div className="text-[11px] font-medium text-slate-500">Unit price</div>
                             </div>
 
-                            <div className="text-left md:text-right">
+                            <div className="relative z-10 self-stretch text-left md:text-right">
                               <div className={`text-xs font-bold ${isOutOfStock ? 'text-slate-500' : maxStock <= product.moq ? 'text-orange-600' : 'text-slate-800'}`}>
                                 {maxStock > 9999 ? '9999+' : maxStock.toLocaleString()}
                               </div>
                               <div className="text-[11px] font-medium text-slate-500">{isOutOfStock ? 'Unavailable' : maxStock <= product.moq ? 'Low stock' : 'Stock'}</div>
                             </div>
 
-                            <div className="flex items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                            <div className="relative z-10 flex self-stretch">
+                              <div className="flex items-center self-start overflow-hidden rounded-md border border-slate-200 bg-white">
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -617,9 +643,10 @@ export function ProductDetailPage() {
                               >
                                 +
                               </button>
+                              </div>
                             </div>
 
-                            <div className="text-left md:text-right">
+                            <div className="relative z-10 self-stretch text-left md:text-right">
                               <div className={`text-xs font-bold ${isSelected ? 'text-[#1D4ED8]' : 'text-slate-300'}`}>
                                 {isSelected ? `${currencySymbol}${rowSubtotal.toFixed(2)}` : '-'}
                               </div>
@@ -660,7 +687,7 @@ export function ProductDetailPage() {
                           <div key={row.variant.id} className="flex gap-3 rounded-2xl border border-[#4F6BFF]/20 bg-[#EEF2FF]/60 p-3">
                             <img src={rowImage} alt={rowLabel} loading="lazy" decoding="async" className="h-12 w-12 rounded-xl border border-white object-cover shadow-sm" />
                             <div className="min-w-0 flex-1">
-                              <div className="line-clamp-1 text-sm font-bold text-slate-900">{rowLabel}</div>
+                              <div className="whitespace-normal break-words text-sm font-bold leading-snug text-slate-900">{rowLabel}</div>
                               <div className="mt-1 text-xs text-slate-600">{currencySymbol}{row.variant.price.toFixed(2)} x {row.quantity}</div>
                             </div>
                             <div className="text-right text-sm font-bold text-[#4F6BFF]">{currencySymbol}{(row.variant.price * row.quantity).toFixed(2)}</div>
@@ -923,6 +950,17 @@ export function ProductDetailPage() {
             </div>
           </div>
         </div>
+        {mainImagePreview && (
+          <div className="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/20 p-8 lg:flex">
+            <div className="h-[min(86vh,820px)] w-[min(86vw,820px)] overflow-hidden drop-shadow-2xl">
+              <img
+                src={mainImagePreview.src}
+                alt={mainImagePreview.alt}
+                className="h-full w-full object-contain"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

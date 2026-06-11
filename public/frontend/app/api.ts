@@ -48,6 +48,12 @@ export interface ProductSummary {
   import_error?: string | null;
   import_total_tasks?: number | null;
   import_completed_tasks?: number | null;
+  import_processing_timing?: {
+    status: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+    duration_ms: number;
+  } | null;
   last_updated: string | null;
   unit_price: number;
   base_price_range: string;

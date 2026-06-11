@@ -265,10 +265,77 @@ export function AdminProductsPage() {
         : 'bg-blue-50 text-blue-700 border-blue-200';
 
     return (
-      <div className="max-w-56">
-        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold capitalize ${tone}`}>
+      <div className="max-w-full">
+        <span className={`inline-flex max-w-full flex-wrap rounded-full border px-3 py-1 text-xs font-bold capitalize ${tone}`}>
           {product.import_status}: {progress}
         </span>
+      </div>
+    );
+  };
+
+  const formatProcessingTimestamp = (value: string | null) => {
+    if (!value) {
+      return '-';
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleString([], {
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+  };
+
+  const formatProcessingDuration = (durationMs: number) => {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      return '-';
+    }
+
+    if (durationMs < 1000) {
+      return `${Math.round(durationMs)}ms`;
+    }
+
+    const totalSeconds = Math.round(durationMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  };
+
+  const getProcessingDurationMs = (startedAt: string | null, endedAt: string | null, storedDurationMs: number) => {
+    if (storedDurationMs > 0 || !startedAt) {
+      return storedDurationMs;
+    }
+
+    const started = new Date(startedAt);
+    const ended = endedAt ? new Date(endedAt) : new Date();
+
+    if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) {
+      return storedDurationMs;
+    }
+
+    return Math.max(0, ended.getTime() - started.getTime());
+  };
+
+  const getImportProcessingTime = (product: ProductSummary) => {
+    const timing = product.import_processing_timing;
+
+    if (!timing) {
+      return <span className="text-xs font-semibold text-slate-400">-</span>;
+    }
+
+    const durationMs = getProcessingDurationMs(timing.started_at, timing.ended_at, timing.duration_ms);
+
+    return (
+      <div className="space-y-1 text-xs leading-snug text-slate-600">
+        <div><span className="font-semibold text-slate-700">Start:</span> {formatProcessingTimestamp(timing.started_at)}</div>
+        <div><span className="font-semibold text-slate-700">Processing:</span> {formatProcessingDuration(durationMs)}</div>
+        <div><span className="font-semibold text-slate-700">End:</span> {formatProcessingTimestamp(timing.ended_at)}</div>
       </div>
     );
   };
@@ -565,7 +632,7 @@ export function AdminProductsPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-16">
-      <div className="max-w-[1600px] mx-auto px-6">
+      <div className="w-full max-w-[2200px] mx-auto px-4 sm:px-6 2xl:px-8">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3"><Package className="w-8 h-8 text-[#7C3AED]" /><h1 className="text-4xl font-bold text-slate-900">{t('admin.productManagement')}</h1></div>
           <p className="text-slate-600 text-lg">{t('admin.productManagementDesc')}</p>
@@ -666,26 +733,40 @@ export function AdminProductsPage() {
 
         <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="min-w-[1540px] w-full table-fixed">
+              <colgroup>
+                <col className="w-[135px]" />
+                <col className="w-[82px]" />
+                <col className="w-[270px]" />
+                <col className="w-[175px]" />
+                <col className="w-[105px]" />
+                <col className="w-[78px]" />
+                <col className="w-[140px]" />
+                <col className="w-[120px]" />
+                <col className="w-[165px]" />
+                <col className="w-[220px]" />
+                <col className="w-[210px]" />
+              </colgroup>
               <thead className="bg-slate-50 border-b-2 border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SKU</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Image</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.productName')}</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.category')}</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.stock')}</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">MOQ</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.priceRange')}</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.status')}</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Import Job</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.actions')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SKU</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Image</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.productName')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.category')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.stock')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">MOQ</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.priceRange')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.status')}</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Import Job</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Start / End Time</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">{t('admin.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {products.map((product) => (
-                  <tr key={product.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono font-semibold text-slate-700">{product.sku}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr key={product.id} className="align-top hover:bg-slate-50 transition-colors">
+                    <td className="px-3 py-4 align-top"><span className="break-all text-sm font-mono font-semibold leading-snug text-slate-700">{product.sku}</span></td>
+                    <td className="px-3 py-4 align-top">
                       {product.image ? (
                         <div
                           className="h-12 w-12 rounded-lg"
@@ -707,17 +788,18 @@ export function AdminProductsPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4"><div className="text-sm font-semibold text-slate-900">{product.name}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-600">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</span>
+                    <td className="px-3 py-4 align-top"><div className="break-words text-sm font-semibold leading-snug text-slate-900">{product.name}</div></td>
+                    <td className="px-3 py-4 align-top">
+                      <span className="break-words text-sm leading-snug text-slate-600">{formatApiCategoryL1(product.cat_from_api, language, product.category)}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className={`text-sm font-semibold ${product.status === 'low-stock' ? 'text-amber-600' : 'text-slate-900'}`}>{product.stock_quantity.toLocaleString()}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-600">{product.moq}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-semibold text-slate-900">{product.base_price_range}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(product.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{getImportJobBadge(product)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
+                    <td className="px-3 py-4 align-top"><span className={`break-words text-sm font-semibold leading-snug ${product.status === 'low-stock' ? 'text-amber-600' : 'text-slate-900'}`}>{product.stock_quantity.toLocaleString()}</span></td>
+                    <td className="px-3 py-4 align-top"><span className="break-words text-sm leading-snug text-slate-600">{product.moq}</span></td>
+                    <td className="px-3 py-4 align-top"><span className="break-words text-sm font-semibold leading-snug text-slate-900">{product.base_price_range}</span></td>
+                    <td className="px-3 py-4 align-top">{getStatusBadge(product.status)}</td>
+                    <td className="px-3 py-4 align-top">{getImportJobBadge(product)}</td>
+                    <td className="px-3 py-4 align-top">{getImportProcessingTime(product)}</td>
+                    <td className="px-3 py-4 align-top">
+                      <div className="flex min-w-[176px] items-center gap-2 whitespace-nowrap">
                         <Link to={`/marketplace/product/${product.id}`} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="View product">
                           <Eye className="w-4 h-4" />
                         </Link>
