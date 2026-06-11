@@ -36,7 +36,7 @@ return [
     ],
 
     'fogot' => [
-        'base_url' => env('FOGOT_API_BASE_URL', 'https://py.fogot.cn/api/product'),
+        'base_url' => env('FOGOT_API_BASE_URL', 'https://py.hexugo.com/api/product'),
         'timeout' => (int) env('FOGOT_API_TIMEOUT', 600),
         'connect_timeout' => (int) env('FOGOT_API_CONNECT_TIMEOUT', 30),
         'retry_times' => (int) env('FOGOT_API_RETRY_TIMES', 0),

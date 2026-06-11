@@ -740,7 +740,7 @@ class AdminProductImportApiTest extends TestCase
         Config::set('services.fogot.timeout', 900);
 
         Http::fake([
-            'https://py.fogot.cn/api/product/detail/image/translate' => Http::sequence()
+            'https://py.hexugo.com/api/product/detail/image/translate' => Http::sequence()
                 ->push(['message' => 'still processing'], 420)
                 ->push(['message' => 'temporary server error'], 500)
                 ->push([
@@ -780,7 +780,7 @@ class AdminProductImportApiTest extends TestCase
                     'Content-Type' => 'image/jpeg',
                 ]);
             },
-            'https://py.fogot.cn/api/product/detail/image/translate' => function ($request) use (&$fogotCalls) {
+            'https://py.hexugo.com/api/product/detail/image/translate' => function ($request) use (&$fogotCalls) {
                 $fogotCalls++;
                 $this->assertSame(base64_encode('source-image-binary'), $request['image_base64']);
                 $this->assertSame('image/jpeg', $request['mime_type']);
@@ -811,7 +811,7 @@ class AdminProductImportApiTest extends TestCase
         Config::set('services.fogot.retry_statuses', [500]);
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response(['message' => 'temporary server error'], 500),
+            'https://py.hexugo.com/api/product/image/redraw' => Http::response(['message' => 'temporary server error'], 500),
         ]);
 
         $category = Category::query()->create([
@@ -951,8 +951,8 @@ class AdminProductImportApiTest extends TestCase
         Config::set('services.fogot.retry_statuses', [500]);
 
         Http::fake([
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response(['detail' => 'server error'], 500),
-            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response(['detail' => 'server error'], 500),
+            'https://py.hexugo.com/api/product/detail/image/translate' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -1009,7 +1009,7 @@ class AdminProductImportApiTest extends TestCase
         Storage::fake('public');
 
         Http::fake([
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys',
@@ -1017,10 +1017,10 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ]),
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response([
                 'category' => 'ä»‹ç»å•†å“',
             ]),
-            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/translate' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -1028,7 +1028,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ]),
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+            'https://py.hexugo.com/api/product/image/redraw' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/png',
@@ -1198,10 +1198,10 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response([
                 'category' => '介绍商品',
             ], 200),
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys & Games',
@@ -1243,7 +1243,7 @@ class AdminProductImportApiTest extends TestCase
     public function test_admin_can_create_imported_product_and_store_processed_images_locally(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         $redrawCalls = 0;
         $translateCalls = 0;
@@ -1251,7 +1251,7 @@ class AdminProductImportApiTest extends TestCase
         $productCategoryCalls = 0;
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+            'https://py.hexugo.com/api/product/image/redraw' => function () use (&$redrawCalls) {
                 $redrawCalls++;
 
                 return Http::response([
@@ -1265,7 +1265,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+            'https://py.hexugo.com/api/product/detail/image/translate' => function () use (&$translateCalls) {
                 $translateCalls++;
 
                 return Http::response([
@@ -1277,14 +1277,14 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
+            'https://py.hexugo.com/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
                 $descriptionClassifyCalls++;
 
                 return Http::response([
                     'category' => '介绍商品',
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/category/classify' => function () use (&$productCategoryCalls) {
+            'https://py.hexugo.com/api/product/category/classify' => function () use (&$productCategoryCalls) {
                 $productCategoryCalls++;
 
                 return Http::response([
@@ -1408,7 +1408,7 @@ class AdminProductImportApiTest extends TestCase
     public function test_add_product_import_source_creates_only_single_product_and_never_fetches_shop_items(): void
     {
         Http::fake([
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys & Games',
@@ -1474,13 +1474,13 @@ class AdminProductImportApiTest extends TestCase
     public function test_import_processing_extracts_description_images_from_description_html(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         $descriptionClassifyCalls = 0;
         $translateCalls = 0;
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+            'https://py.hexugo.com/api/product/image/redraw' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -1488,14 +1488,14 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
-            'https://py.fogot.cn/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
+            'https://py.hexugo.com/api/product/detail/image/classify' => function () use (&$descriptionClassifyCalls) {
                 $descriptionClassifyCalls++;
 
                 return Http::response([
                     'category' => 'ä»‹ç»å•†å“',
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+            'https://py.hexugo.com/api/product/detail/image/translate' => function () use (&$translateCalls) {
                 $translateCalls++;
 
                 return Http::response([
@@ -1507,7 +1507,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys & Games',
@@ -1576,12 +1576,12 @@ class AdminProductImportApiTest extends TestCase
     public function test_description_images_are_skipped_when_classify_api_marks_them_as_non_product_content(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         $translateCalls = 0;
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+            'https://py.hexugo.com/api/product/image/redraw' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -1589,7 +1589,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
-            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+            'https://py.hexugo.com/api/product/detail/image/translate' => function () use (&$translateCalls) {
                 $translateCalls++;
 
                 return Http::response([
@@ -1601,10 +1601,10 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response([
                 'category' => '其他',
             ], 200),
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys & Games',
@@ -1677,13 +1677,13 @@ class AdminProductImportApiTest extends TestCase
     public function test_unique_variant_property_images_are_translated_when_not_already_present_in_item_images(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         $redrawCalls = 0;
         $translateCalls = 0;
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+            'https://py.hexugo.com/api/product/image/redraw' => function () use (&$redrawCalls) {
                 $redrawCalls++;
 
                 return Http::response([
@@ -1695,7 +1695,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/translate' => function () use (&$translateCalls) {
+            'https://py.hexugo.com/api/product/detail/image/translate' => function () use (&$translateCalls) {
                 $translateCalls++;
 
                 return Http::response([
@@ -1707,10 +1707,10 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response([
                 'category' => '介绍商品',
             ], 200),
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Sports',
@@ -1798,12 +1798,12 @@ class AdminProductImportApiTest extends TestCase
     public function test_only_first_four_gallery_images_plus_main_use_redraw_api(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         $redrawCalls = 0;
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => function () use (&$redrawCalls) {
+            'https://py.hexugo.com/api/product/image/redraw' => function () use (&$redrawCalls) {
                 $redrawCalls++;
 
                 return Http::response([
@@ -1815,7 +1815,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ], 200);
             },
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Toys & Games',
@@ -2002,10 +2002,10 @@ class AdminProductImportApiTest extends TestCase
     public function test_admin_can_retry_imported_product_processing(): void
     {
         Storage::fake('public');
-        config()->set('services.fogot.base_url', 'https://py.fogot.cn/api/product');
+        config()->set('services.fogot.base_url', 'https://py.hexugo.com/api/product');
 
         Http::fake([
-            'https://py.fogot.cn/api/product/image/redraw' => Http::response([
+            'https://py.hexugo.com/api/product/image/redraw' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -2013,7 +2013,7 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
-            'https://py.fogot.cn/api/product/detail/image/translate' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/translate' => Http::response([
                 'images' => [
                     [
                         'mime_type' => 'image/jpeg',
@@ -2021,10 +2021,10 @@ class AdminProductImportApiTest extends TestCase
                     ],
                 ],
             ], 200),
-            'https://py.fogot.cn/api/product/detail/image/classify' => Http::response([
+            'https://py.hexugo.com/api/product/detail/image/classify' => Http::response([
                 'category' => '介绍商品',
             ], 200),
-            'https://py.fogot.cn/api/product/category/classify' => Http::response([
+            'https://py.hexugo.com/api/product/category/classify' => Http::response([
                 'items' => [
                     [
                         'L1_EN' => 'Early Years',
